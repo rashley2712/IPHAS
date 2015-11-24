@@ -13,6 +13,29 @@ from astropy.table import Table, vstack
 from astropy.utils import data
 import astropy.table
 
+def drawCanvas(objectTable):
+	raArray = objectTable['RAJ2000']
+	decArray = objectTable['DEJ2000']
+	classArray = objectTable['mergedClass']
+	xArray, yArray = wcsSolution.all_world2pix(raArray, decArray, 1)
+	pStarArray = objectTable['pStar']
+	ppgplot.pgsci(3)
+	ppgplot.pgsfs(2)
+	index = 0
+	for ra, dec, x, y, c, p in zip(raArray, decArray, xArray, yArray, classArray, pStarArray):
+		# print index, ra, dec, x, y, c
+		index+= 1
+		colour = 1
+		if c==-9: colour = 0   # Black  = Saturated
+		if c==1: colour = 4    # Blue   = Galaxy
+		if c==-3: colour = 5   # Cyan   = Probable Galaxy
+		if c==-1: colour = 7   # Yellow = Star
+		if c==-2: colour = 8   # Orange = Probable Star
+		if c==0: colour = 2    # Red    = Noise
+		ppgplot.pgsci(colour)
+		ppgplot.pgcirc(x, y, 5 + (5*p))
+	
+
 if __name__ == "__main__":
 	
 	parser = argparse.ArgumentParser(description='Loads an IFAS reduced image. Displays it with PGPLOT.')
@@ -32,6 +55,8 @@ if __name__ == "__main__":
 		print "Please specify an exposure time or save one in the config file."
 		sys.exit()
 	"""
+	
+	paperSize = 6  # Paper size in inches
 	
 	if args.save:
 		config.save()
@@ -59,7 +84,7 @@ if __name__ == "__main__":
 	""" Set up the PGPLOT windows """
 	imagePlot = {}
 	imagePlot['pgplotHandle'] = ppgplot.pgopen('/xs')
-	ppgplot.pgpap(6, aspectRatio)
+	ppgplot.pgpap(paperSize, aspectRatio)
 	ppgplot.pgsvp(0.0, 1.0, 0.0, 1.0)
 	ppgplot.pgswin(0, width, 0, height)
 	
@@ -116,50 +141,50 @@ if __name__ == "__main__":
 	print dr2nearby.colnames
 	
 	dr2nearby.remove_column('errBits2')
-	# print "Table length:", len(dr2nearby)
-	# print "(Unique) table length:", len(astropy.table.unique(dr2nearby))
+	xlimits = (0, width)
+	ylimits = (0, height)
 	
-	
-	raArray = dr2nearby['RAJ2000']
-	decArray = dr2nearby['DEJ2000']
-	classArray = dr2nearby['mergedClass']
-	xArray, yArray = wcsSolution.all_world2pix(raArray, decArray, 1)
-	pStarArray = dr2nearby['pStar']
-	ppgplot.pgsci(3)
-	ppgplot.pgsfs(2)
-	index = 0
-	for ra, dec, x, y, c, p in zip(raArray, decArray, xArray, yArray, classArray, pStarArray):
-		# print index, ra, dec, x, y, c
-		index+= 1
-		colour = 1
-		if c==-9: colour = 0   # Black  = Saturated
-		if c==1: colour = 4    # Blue   = Galaxy
-		if c==-3: colour = 5   # Cyan   = Probable Galaxy
-		if c==-1: colour = 7   # Yellow = Star
-		if c==-2: colour = 8   # Orange = Probable Star
-		if c==0: colour = 2    # Red    = Noise
-		ppgplot.pgsci(colour)
-		ppgplot.pgcirc(x, y, 5 + (5*p))
+	drawCanvas(dr2nearby)
 		
-	screen = curses.initscr()
-	screen.keypad(1)
-	
-	try:
-		while True: 
-			event = screen.getch()
-			if event == ord("q"): break
-			elif event == ord(" "): 
-				screen.addstr("The User Pressed The Space Bar")
-				x = 0
-				y= 0
-				ch = None
-				ppgplot.pgcurs(x, y)
-				print x, y, ch
-	except KeyboardInterrupt:
-		curses.endwin()
-		print "Ctrl-C pressed, but I dealt with it. "
+	# try: 
+	x=width/2
+	y=height/2
+	ppgplot.pgsci(3)
+	keyPressed = None
+	while keyPressed != 'q':
+		ch = ppgplot.pgcurs(x, y)
+		x=ch[0]
+		y=ch[1]
+		keyPressed = ch[2]
+		print "Key pressed:", ch[2]
+		if keyPressed=='i':
+			print "Zoom requested at (%0.0f, %0.0f)"%(x, y)
+			zoomFactor = 1.5
+			currentWidth = (xlimits[1] - xlimits[0])
+			newWidth = currentWidth / zoomFactor
+			currentHeight = (ylimits[1] - ylimits[0])
+			newHeight = currentHeight / zoomFactor
+			if (newWidth<100) or (newHeight<100):
+				print "Maximum zoom reached."
+			else:
+				xlimits = (int(x - newWidth/2), int(x + newWidth/2)) 
+				if xlimits[0] < 0:
+					xlimits = (0, xlimits[1] + abs(xlimits[0]))
+				if xlimits[1] > width:
+					xlimits = (width - newWidth, width)
+				ylimits = (int(x - newHeight/2), int(x + newHeight/2)) 
+				if ylimits[0] < 0:
+					ylimits = (0, ylimits[1] + abs(ylimits[0]))
+				if ylimits[1] > height:
+					ylimits = (height - newheight, height)
+				
+			print "new limits:", xlimits, ylimits
+			
+			pgplot.pg
+			
+	# except KeyboardInterrupt:
+	#	print "Ctrl-C pressed, but I dealt with it. "
 
-	curses.endwin()
 
 	ppgplot.pgclos()
 	
