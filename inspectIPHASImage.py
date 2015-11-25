@@ -13,7 +13,7 @@ from astropy.table import Table, vstack
 from astropy.utils import data
 import astropy.table
 
-def drawCanvas(objectTable):
+def plotCircles(objectTable, margins):
 	raArray = objectTable['RAJ2000']
 	decArray = objectTable['DEJ2000']
 	classArray = objectTable['mergedClass']
@@ -22,18 +22,25 @@ def drawCanvas(objectTable):
 	ppgplot.pgsci(3)
 	ppgplot.pgsfs(2)
 	index = 0
+	print "Margins:", margins
 	for ra, dec, x, y, c, p in zip(raArray, decArray, xArray, yArray, classArray, pStarArray):
-		# print index, ra, dec, x, y, c
-		index+= 1
-		colour = 1
-		if c==-9: colour = 0   # Black  = Saturated
-		if c==1: colour = 4    # Blue   = Galaxy
-		if c==-3: colour = 5   # Cyan   = Probable Galaxy
-		if c==-1: colour = 7   # Yellow = Star
-		if c==-2: colour = 8   # Orange = Probable Star
-		if c==0: colour = 2    # Red    = Noise
-		ppgplot.pgsci(colour)
-		ppgplot.pgcirc(x, y, 5 + (5*p))
+		if ra > margins[1][0] and ra < margins[0][0] and dec<margins[0][1] and dec>margins[1][1]:
+			# print index, ra, dec, x, y, c
+			index+= 1
+			colour = 1
+			if c==-9: colour = 0   # Black  = Saturated
+			if c==1: colour = 4    # Blue   = Galaxy
+			if c==-3: colour = 5   # Cyan   = Probable Galaxy
+			if c==-1: colour = 7   # Yellow = Star
+			if c==-2: colour = 8   # Orange = Probable Star
+			if c==0: colour = 2    # Red    = Noise
+			ppgplot.pgsci(colour)
+			ppgplot.pgcirc(x, y, 5 + (5*p))
+	print "%d sources plotted."%(index+1)
+		
+def withinMargins(table, namedColumns):
+	print namedColumns
+	return True
 	
 
 if __name__ == "__main__":
@@ -57,6 +64,7 @@ if __name__ == "__main__":
 	"""
 	
 	paperSize = 6  # Paper size in inches
+	imageMinMax = (0, 255)
 	
 	if args.save:
 		config.save()
@@ -95,13 +103,17 @@ if __name__ == "__main__":
 	ppgplot.pggray(boostedImage, 0, width-1, 0, height-1, 0, 255, imagePlot['pgPlotTransform'])
 	
 	# Determine the RA, DEC of the centre of the image, using the WCS solution found in the FITS header
-	imageCentre = [ width/2, height/3]
+	imageCentre = [ width/2, height/2]
 	
 	
 	ra, dec = wcsSolution.all_pix2world([imageCentre], 1)[0]
+	
+	
 	positionString = generalUtils.toSexagesimal((ra, dec))
-	print ra, dec
-	print "RA, DEC of image centre is: ", positionString
+	print "RA, DEC of image centre is: ", positionString, ra, dec
+	margins = wcsSolution.all_pix2world([[0, 0], [width, height]], 1)
+	print "ra, dec limits:", margins
+	
 	
 	filenameParts = args.filename.split('.')
 	dr2Filename = filenameParts[0] + "_dr2_cache.fits"
@@ -144,7 +156,8 @@ if __name__ == "__main__":
 	xlimits = (0, width)
 	ylimits = (0, height)
 	
-	drawCanvas(dr2nearby)
+	plotCircles(dr2nearby, margins)
+	
 		
 	# try: 
 	x=width/2
@@ -166,21 +179,67 @@ if __name__ == "__main__":
 			newHeight = currentHeight / zoomFactor
 			if (newWidth<100) or (newHeight<100):
 				print "Maximum zoom reached."
+				continue
 			else:
 				xlimits = (int(x - newWidth/2), int(x + newWidth/2)) 
 				if xlimits[0] < 0:
 					xlimits = (0, xlimits[1] + abs(xlimits[0]))
 				if xlimits[1] > width:
 					xlimits = (width - newWidth, width)
-				ylimits = (int(x - newHeight/2), int(x + newHeight/2)) 
+				ylimits = (int(y - newHeight/2), int(y + newHeight/2)) 
 				if ylimits[0] < 0:
 					ylimits = (0, ylimits[1] + abs(ylimits[0]))
 				if ylimits[1] > height:
-					ylimits = (height - newheight, height)
+					ylimits = (height - newHeight, height)
 				
+			xlimits = (int(xlimits[0]), int(xlimits[1]))
+			ylimits = (int(ylimits[0]), int(ylimits[1]))
 			print "new limits:", xlimits, ylimits
+			ra_limits, dec_limits = wcsSolution.all_pix2world(numpy.array(xlimits), numpy.array(ylimits), 1)
+			print "new limits (world)", ra_limits, dec_limits
 			
-			pgplot.pg
+			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
+			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, 0, 255, imagePlot['pgPlotTransform'])
+			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
+			plotCircles(dr2nearby, margins)
+
+		if keyPressed=='o':
+			if newWidth == width: continue
+			print "Zoom out requested at (%0.0f, %0.0f)"%(x, y)
+			zoomFactor = 0.5
+			currentWidth = (xlimits[1] - xlimits[0])
+			newWidth = currentWidth / zoomFactor
+			currentHeight = (ylimits[1] - ylimits[0])
+			newHeight = currentHeight / zoomFactor
+			
+			if (newWidth >= width) or (newHeight>=height):
+				print "Back to 1:1 scale."
+				newWidth = width
+				newHeight = height
+				
+			xlimits = (int(x - newWidth/2), int(x + newWidth/2)) 
+			if xlimits[0] < 0:
+				xlimits = (0, xlimits[1] + abs(xlimits[0]))
+			if xlimits[1] > width:
+				xlimits = (width - newWidth, width)
+			ylimits = (int(y - newHeight/2), int(y + newHeight/2)) 
+			if ylimits[0] < 0:
+				ylimits = (0, ylimits[1] + abs(ylimits[0]))
+			if ylimits[1] > height:
+				ylimits = (height - newHeight, height)
+				
+			xlimits = (int(xlimits[0]), int(xlimits[1]))
+			ylimits = (int(ylimits[0]), int(ylimits[1]))
+			print "new limits:", xlimits, ylimits
+			ra_limits, dec_limits = wcsSolution.all_pix2world(numpy.array(xlimits), numpy.array(ylimits), 1)
+			print "new limits (world)", ra_limits, dec_limits
+			
+			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
+			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, 0, 255, imagePlot['pgPlotTransform'])
+			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
+			plotCircles(dr2nearby, margins)
+			
+			
 			
 	# except KeyboardInterrupt:
 	#	print "Ctrl-C pressed, but I dealt with it. "
