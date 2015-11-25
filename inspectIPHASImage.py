@@ -31,7 +31,7 @@ def plotCircles(objectTable, margins):
 			if c==-9: colour = 0   # Black  = Saturated
 			if c==1: colour = 4    # Blue   = Galaxy
 			if c==-3: colour = 5   # Cyan   = Probable Galaxy
-			if c==-1: colour = 7   # Yellow = Star
+			if c==-1: colour = 3   # Green = Star
 			if c==-2: colour = 8   # Orange = Probable Star
 			if c==0: colour = 2    # Red    = Noise
 			ppgplot.pgsci(colour)
@@ -170,6 +170,11 @@ if __name__ == "__main__":
 		y=ch[1]
 		keyPressed = ch[2]
 		print "Key pressed:", ch[2]
+		if keyPressed== 'w':
+			imageMinMax = (imageMinMax[1], imageMinMax[0])
+			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, imageMinMax[0], imageMinMax[1], imagePlot['pgPlotTransform'])
+			plotCircles(dr2nearby, margins)
+			
 		if keyPressed=='i':
 			print "Zoom requested at (%0.0f, %0.0f)"%(x, y)
 			zoomFactor = 1.5
@@ -201,6 +206,14 @@ if __name__ == "__main__":
 			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
 			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, 0, 255, imagePlot['pgPlotTransform'])
 			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
+			if margins[0][0] < margins[1][0]:
+				temp = margins[0][0]
+				margins[0][0] = margins[1][0]
+				margins[1][0] = temp
+			if margins[0][1] < margins[1][1]:
+				temp = margins[0][1]
+				margins[0][1] = margins[1][1]
+				margins[1][1] = temp
 			plotCircles(dr2nearby, margins)
 
 		if keyPressed=='o':
@@ -232,11 +245,20 @@ if __name__ == "__main__":
 			ylimits = (int(ylimits[0]), int(ylimits[1]))
 			print "new limits:", xlimits, ylimits
 			ra_limits, dec_limits = wcsSolution.all_pix2world(numpy.array(xlimits), numpy.array(ylimits), 1)
+			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
+			if margins[0][0] < margins[1][0]:
+				temp = margins[0][0]
+				margins[0][0] = margins[1][0]
+				margins[1][0] = temp
+			if margins[0][1] < margins[1][1]:
+				temp = margins[0][1]
+				margins[0][1] = margins[1][1]
+				margins[1][1] = temp
+				
 			print "new limits (world)", ra_limits, dec_limits
 			
 			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
 			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, 0, 255, imagePlot['pgPlotTransform'])
-			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
 			plotCircles(dr2nearby, margins)
 			
 			
