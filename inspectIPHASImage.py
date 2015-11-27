@@ -14,16 +14,15 @@ from astropy.utils import data
 import astropy.table
 
 def plotCircles(objectTable, margins):
-	raArray = objectTable['RAJ2000']
-	decArray = objectTable['DEJ2000']
-	classArray = objectTable['mergedClass']
-	xArray, yArray = wcsSolution.all_world2pix(raArray, decArray, 1)
-	pStarArray = objectTable['pStar']
+	margins = checkMargins(margins)
 	ppgplot.pgsci(3)
 	ppgplot.pgsfs(2)
 	index = 0
 	print "Margins:", margins
-	for ra, dec, x, y, c, p in zip(raArray, decArray, xArray, yArray, classArray, pStarArray):
+	for obj in dr2Objects:
+		ra = obj['ra']
+		dec = obj['dec']
+		c = obj['class']
 		if ra > margins[1][0] and ra < margins[0][0] and dec<margins[0][1] and dec>margins[1][1]:
 			# print index, ra, dec, x, y, c
 			index+= 1
@@ -35,8 +34,24 @@ def plotCircles(objectTable, margins):
 			if c==-2: colour = 8   # Orange = Probable Star
 			if c==0: colour = 2    # Red    = Noise
 			ppgplot.pgsci(colour)
-			ppgplot.pgcirc(x, y, 5 + (5*p))
-	print "%d sources plotted."%(index+1)
+			ppgplot.pgcirc(obj['x'], obj['y'], 5 + (5* obj['pStar']))
+	return (index+1)
+	
+def redraw():
+	ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, imageMinMax[0], imageMinMax[1], imagePlot['pgPlotTransform'])
+	if plotSources: plotCircles(dr2nearby, margins)
+	
+		
+def checkMargins(margins):
+	if margins[0][0] < margins[1][0]:
+		temp = margins[0][0]
+		margins[0][0] = margins[1][0]
+		margins[1][0] = temp
+	if margins[0][1] < margins[1][1]:
+		temp = margins[0][1]
+		margins[0][1] = margins[1][1]
+		margins[1][1] = temp
+	return margins
 		
 def withinMargins(table, namedColumns):
 	print namedColumns
@@ -65,6 +80,8 @@ if __name__ == "__main__":
 	
 	paperSize = 6  # Paper size in inches
 	imageMinMax = (0, 255)
+	plotSources = True
+	invertedColours = True
 	
 	if args.save:
 		config.save()
@@ -112,6 +129,7 @@ if __name__ == "__main__":
 	positionString = generalUtils.toSexagesimal((ra, dec))
 	print "RA, DEC of image centre is: ", positionString, ra, dec
 	margins = wcsSolution.all_pix2world([[0, 0], [width, height]], 1)
+	margins = checkMargins(margins)
 	print "ra, dec limits:", margins
 	
 	
@@ -140,8 +158,10 @@ if __name__ == "__main__":
 			if index==0: 
 				dr2nearby = dr2nearbyTemp
 			else:
+				print "Table was %d rows. Additional data is %d rows."%(len(dr2nearby), len(dr2nearbyTemp))
 				dr2nearbyWhole = vstack([dr2nearby, dr2nearbyTemp])
 				dr2nearby = dr2nearbyWhole
+				print "New table is %d rows."%len(dr2nearby)
 			print dr2nearby
 			
 			
@@ -150,9 +170,34 @@ if __name__ == "__main__":
 	else:
 		dr2nearby = Table.read(dr2Filename)
 	
-	print dr2nearby.colnames
+	print "Data columns found in the DR2 catalogue:", dr2nearby.colnames
 	
 	dr2nearby.remove_column('errBits2')
+	
+	print "Length of the dr2 table:",len(dr2nearby)
+	
+	# Move table into a dictionary object
+	IPHAS2Names = []
+	dr2Objects = []
+	for row in dr2nearby:
+		IPHAS2name = row['IPHAS2']
+		# print IPHAS2name
+		if IPHAS2name not in IPHAS2Names: 
+			IPHAS2Names.append(IPHAS2name)
+			dr2Object={}
+			dr2Object['name'] = IPHAS2name
+			dr2Object['ra'] = row['RAJ2000']
+			dr2Object['dec'] = row['DEJ2000']
+			dr2Object['class'] = row['mergedClass']
+			dr2Object['pStar'] = row['pStar']
+			x, y = wcsSolution.all_world2pix([dr2Object['ra']], [dr2Object['dec']], 1)
+			dr2Object['x'] = x[0]
+			dr2Object['y'] = y[0]
+			dr2Objects.append(dr2Object)
+		
+	
+	print "After uniqueness check:", len(IPHAS2Names), len(dr2Objects)
+	
 	xlimits = (0, width)
 	ylimits = (0, height)
 	
@@ -162,6 +207,8 @@ if __name__ == "__main__":
 	# try: 
 	x=width/2
 	y=height/2
+	newWidth = width
+	newHeight = height
 	ppgplot.pgsci(3)
 	keyPressed = None
 	while keyPressed != 'q':
@@ -169,11 +216,19 @@ if __name__ == "__main__":
 		x=ch[0]
 		y=ch[1]
 		keyPressed = ch[2]
-		print "Key pressed:", ch[2]
+		# print "Key pressed:", ch[2]
+		if keyPressed== 'p':
+			if plotSources == True:
+				plotSources = False
+			else:
+				plotSources = True
+			redraw()
+			
 		if keyPressed== 'w':
 			imageMinMax = (imageMinMax[1], imageMinMax[0])
-			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, imageMinMax[0], imageMinMax[1], imagePlot['pgPlotTransform'])
-			plotCircles(dr2nearby, margins)
+			if invertedColours: invertedColours= False
+			else: invertedColours=True
+			redraw()
 			
 		if keyPressed=='i':
 			print "Zoom requested at (%0.0f, %0.0f)"%(x, y)
@@ -204,18 +259,9 @@ if __name__ == "__main__":
 			print "new limits (world)", ra_limits, dec_limits
 			
 			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
-			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, 0, 255, imagePlot['pgPlotTransform'])
 			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
-			if margins[0][0] < margins[1][0]:
-				temp = margins[0][0]
-				margins[0][0] = margins[1][0]
-				margins[1][0] = temp
-			if margins[0][1] < margins[1][1]:
-				temp = margins[0][1]
-				margins[0][1] = margins[1][1]
-				margins[1][1] = temp
-			plotCircles(dr2nearby, margins)
-
+			redraw()
+			
 		if keyPressed=='o':
 			if newWidth == width: continue
 			print "Zoom out requested at (%0.0f, %0.0f)"%(x, y)
@@ -245,22 +291,17 @@ if __name__ == "__main__":
 			ylimits = (int(ylimits[0]), int(ylimits[1]))
 			print "new limits:", xlimits, ylimits
 			ra_limits, dec_limits = wcsSolution.all_pix2world(numpy.array(xlimits), numpy.array(ylimits), 1)
-			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
-			if margins[0][0] < margins[1][0]:
-				temp = margins[0][0]
-				margins[0][0] = margins[1][0]
-				margins[1][0] = temp
-			if margins[0][1] < margins[1][1]:
-				temp = margins[0][1]
-				margins[0][1] = margins[1][1]
-				margins[1][1] = temp
-				
+			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]	
 			print "new limits (world)", ra_limits, dec_limits
 			
 			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
-			ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, 0, 255, imagePlot['pgPlotTransform'])
-			plotCircles(dr2nearby, margins)
-			
+			redraw()
+		
+		if plotSources: sourceStatus = "ON"
+		else: sourceStatus = "OFF" 
+		if invertedColours: invertStatus = "ON"
+		else: invertStatus = "OFF" 
+		print "PlotSources[%s] Invert Greyscale[%s]"%(sourceStatus, invertStatus)
 			
 			
 	# except KeyboardInterrupt:
