@@ -18,7 +18,7 @@ def plotCircles(objectTable, margins):
 	ppgplot.pgsci(3)
 	ppgplot.pgsfs(2)
 	index = 0
-	print "Margins:", margins
+	print("Margins:", margins)
 	for obj in objectTable:
 		ra = obj['ra']
 		dec = obj['dec']
@@ -60,7 +60,7 @@ def checkMargins(margins):
 	return margins
 		
 def withinMargins(table, namedColumns):
-	print namedColumns
+	print(namedColumns)
 	return True
 	
 
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 	parser.add_argument('--save', action="store_true", help='Write the input parameters to the config file as default values.')
 	parser.add_argument('--ignorecache', action="store_true", help='Ignore the cached DR2 catalogue. Will overwrite one if it already exists.')
 	args = parser.parse_args()
-	print args
+	print(args)
 	
 	config = configHelper.configClass("inspectIPHASImage")
 
@@ -95,14 +95,18 @@ if __name__ == "__main__":
 	
 	hdulist = fits.open(args.filename)
 	
-	print hdulist.info()
+	print(hdulist.info())
 	
-	
+	filter = None
 	for card in hdulist:
-		print card.header.keys()
-		print repr(card.header)
+		print(card.header.keys())
+		print(repr(card.header))
+		for key in card.header.keys():
+			if 'WFFBAND' in key:
+				filter = card.header[key]
 	
 	imageData =  hdulist[1].data
+
 	
 	wcsSolution = WCS(hdulist[1].header)
 	
@@ -111,7 +115,7 @@ if __name__ == "__main__":
 	(height, width) = numpy.shape(imageData)
 	
 	aspectRatio = float(height)/float(width)
-	print aspectRatio
+	print(aspectRatio)
 	
 	""" Set up the PGPLOT windows """
 	imagePlot = {}
@@ -134,17 +138,17 @@ if __name__ == "__main__":
 	
 	
 	positionString = generalUtils.toSexagesimal((ra, dec))
-	print "RA, DEC of image centre is: ", positionString, ra, dec
+	print("RA, DEC of image centre is: ", positionString, ra, dec)
 	margins = wcsSolution.all_pix2world([[0, 0], [width, height]], 1)
 	margins = checkMargins(margins)
-	print "ra, dec limits:", margins
+	print("ra, dec limits:", margins)
 	
 	
 	filenameParts = args.filename.split('.')
 	dr2Filename = filenameParts[0] + "_dr2_cache.fits"
 	cached = False
 	if not args.ignorecache:
-		print "Looking for a cached copy of the DR2 catalogue:", dr2Filename
+		print("Looking for a cached copy of the DR2 catalogue:", dr2Filename)
 		if os.path.exists(dr2Filename):
 			cached = True
 
@@ -152,10 +156,10 @@ if __name__ == "__main__":
 
 	if not cached:
 		for index, yCentre in enumerate(numpy.arange(height/4, height, height/4)):
-			print yCentre
+			print(yCentre)
 			imageCentre = [ width/2, yCentre]
 			ra, dec = wcsSolution.all_pix2world([imageCentre], 1)[0]
-			print index, imageCentre, ra, dec
+			print(index, imageCentre, ra, dec)
 			with data.conf.set_temp('remote_timeout', 60):
 				try: 
 					search = conesearch(center=(ra, dec),
@@ -163,16 +167,39 @@ if __name__ == "__main__":
 	                    verb=3,
 	                    catalog_db="http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=IPHAS2&-out.all&")
 				except: 
-					print "Failed to retrieve any results from Vizier."
+					print("Failed to retrieve any results from Vizier.")
 			dr2nearbyTemp = search.to_table()
 			if index==0: 
 				dr2nearby = dr2nearbyTemp
 			else:
-				print "Table was %d rows. Additional data is %d rows."%(len(dr2nearby), len(dr2nearbyTemp))
+				print("Table was %d rows. Additional data is %d rows."%(len(dr2nearby), len(dr2nearbyTemp)))
 				dr2nearbyWhole = vstack([dr2nearby, dr2nearbyTemp])
 				dr2nearby = dr2nearbyWhole
-				print "New table is %d rows."%len(dr2nearby)
-			print dr2nearby
+				print("New table is %d rows."%len(dr2nearby))
+			print(dr2nearby)
+		
+		print("Checking for duplicate objects.")
+		IPHASnames = []
+		for index, row in enumerate(dr2nearby):
+			IPHASname = row['IPHAS2']
+			if IPHASname in IPHASnames:
+				dr2nearby.remove_row(index)
+			else:
+				IPHASnames.append(IPHASname)
+			if (index%100) == 0:
+				print(index)
+		
+		
+		print("Trimming out objects that lie outside the limits of this image.")
+		margins = checkMargins(margins)
+		print("Margins: " + str(margins))
+	
+		for index, row in enumerate(dr2nearby):
+			ra = row['RAJ2000']
+			dec = row['DEJ2000']
+			if ra>margins[0][0] or ra<margins[1][0] or dec>margins[0][1] or dec<margins[1][1]:
+				print("Rejecting this row: %d %f, %f is outside image borders."%(index, ra, dec))
+				dr2nearby.remove_row(index)
 			
 			
 		dr2nearby.write(dr2Filename, format='fits', overwrite=True)
@@ -180,11 +207,11 @@ if __name__ == "__main__":
 	else:
 		dr2nearby = Table.read(dr2Filename)
 	
-	print "Data columns found in the DR2 catalogue:", dr2nearby.colnames
+	print("Data columns found in the DR2 catalogue: " + str(dr2nearby.colnames))
 	
 	dr2nearby.remove_column('errBits2')
 	
-	print "Length of the dr2 table:",len(dr2nearby)
+	print("Length of the dr2 table: %d"%len(dr2nearby))
 	
 	# Move table into a dictionary object
 	IPHAS2Names = []
@@ -208,7 +235,7 @@ if __name__ == "__main__":
 			dr2Objects.append(dr2Object)
 		
 	
-	print "After uniqueness check:", len(IPHAS2Names), len(dr2Objects)
+	print("After uniqueness check:", len(IPHAS2Names), len(dr2Objects))
 	
 	# Run through all objects and find the ones that are haClass = "+1" but iClass != "+1" and overall class = "+1"
 	extendedHaSources = []
@@ -216,14 +243,25 @@ if __name__ == "__main__":
 		if (d['class'] ==1) and (d['haClass'] == 1) and (d['iClass'] != 1):
 			extendedHaSources.append(index)
 	
-	print "Found %d extended Ha sources out of %d total objects in DR2."%(len(extendedHaSources), len(dr2Objects))
+	print("Found %d extended Ha sources out of %d total objects in DR2."%(len(extendedHaSources), len(dr2Objects)))
 	
 	
 	xlimits = (0, width)
 	ylimits = (0, height)
 	
 	plotCircles(dr2Objects, margins)
-	
+
+	help = []
+	helpItem = {'key': "p", 'text': "Toggle the plotting of DR2 sources on/off."}
+	help.append(helpItem)
+	helpItem = {'key': "h", 'text': "Plot only the Ha sources."}
+	help.append(helpItem)
+	helpItem = {'key': "w", 'text': "Invert the gray-scale."}
+	help.append(helpItem)
+	helpItem = {'key': "i/o", 'text': "Zoom in/out."}
+	help.append(helpItem)
+	helpItem = {'key': "q", 'text': "Quit."}
+	help.append(helpItem)
 		
 	# try: 
 	x=width/2
@@ -238,6 +276,11 @@ if __name__ == "__main__":
 		y=ch[1]
 		keyPressed = ch[2]
 		# print "Key pressed:", ch[2]
+		if keyPressed== '?':
+			print("Help:")
+			for helpItem in help:
+				print("\t" + helpItem['key'] + " : " +  helpItem['text'])
+			print()
 		if keyPressed== 'p':
 			if plotSources == True:
 				plotSources = False
@@ -259,14 +302,14 @@ if __name__ == "__main__":
 			redraw()
 			
 		if keyPressed=='i':
-			print "Zoom requested at (%0.0f, %0.0f)"%(x, y)
+			print("Zoom requested at (%0.0f, %0.0f)"%(x, y))
 			zoomFactor = 1.5
 			currentWidth = (xlimits[1] - xlimits[0])
 			newWidth = currentWidth / zoomFactor
 			currentHeight = (ylimits[1] - ylimits[0])
 			newHeight = currentHeight / zoomFactor
 			if (newWidth<100) or (newHeight<100):
-				print "Maximum zoom reached."
+				print("Maximum zoom reached.")
 				continue
 			else:
 				xlimits = (int(x - newWidth/2), int(x + newWidth/2)) 
@@ -282,9 +325,9 @@ if __name__ == "__main__":
 				
 			xlimits = (int(xlimits[0]), int(xlimits[1]))
 			ylimits = (int(ylimits[0]), int(ylimits[1]))
-			print "new limits:", xlimits, ylimits
+			print("new limits:", xlimits, ylimits)
 			ra_limits, dec_limits = wcsSolution.all_pix2world(numpy.array(xlimits), numpy.array(ylimits), 1)
-			print "new limits (world)", ra_limits, dec_limits
+			print("new limits (world)", ra_limits, dec_limits)
 			
 			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
 			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
@@ -292,7 +335,7 @@ if __name__ == "__main__":
 			
 		if keyPressed=='o':
 			if newWidth == width: continue
-			print "Zoom out requested at (%0.0f, %0.0f)"%(x, y)
+			print("Zoom out requested at (%0.0f, %0.0f)"%(x, y))
 			zoomFactor = 0.5
 			currentWidth = (xlimits[1] - xlimits[0])
 			newWidth = currentWidth / zoomFactor
@@ -300,7 +343,7 @@ if __name__ == "__main__":
 			newHeight = currentHeight / zoomFactor
 			
 			if (newWidth >= width) or (newHeight>=height):
-				print "Back to 1:1 scale."
+				print("Back to 1:1 scale.")
 				newWidth = width
 				newHeight = height
 				
@@ -317,10 +360,10 @@ if __name__ == "__main__":
 				
 			xlimits = (int(xlimits[0]), int(xlimits[1]))
 			ylimits = (int(ylimits[0]), int(ylimits[1]))
-			print "new limits:", xlimits, ylimits
+			print("new limits:", xlimits, ylimits)
 			ra_limits, dec_limits = wcsSolution.all_pix2world(numpy.array(xlimits), numpy.array(ylimits), 1)
 			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]	
-			print "new limits (world)", ra_limits, dec_limits
+			print("new limits (world)", ra_limits, dec_limits)
 			
 			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
 			redraw()
@@ -331,7 +374,7 @@ if __name__ == "__main__":
 		else: HaStatus = "OFF" 
 		if invertedColours: invertStatus = "ON"
 		else: invertStatus = "OFF" 
-		print "PlotSources[%s]  Plot Ha extended[%s]  Invert Greyscale[%s]"%(sourceStatus, HaStatus, invertStatus)
+		print("Filter: %s PlotSources[%s]  Plot Ha extended[%s]  Invert Greyscale[%s]"%(filter, sourceStatus, HaStatus, invertStatus))
 			
 			
 	# except KeyboardInterrupt:
