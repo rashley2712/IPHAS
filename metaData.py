@@ -1,212 +1,104 @@
 #!/usr/bin/env python
 
-import argparse, sys
+import argparse, sys, os, re
 import datetime, time
-import numpy, math
-import ppgplot
-import generalUtils, configHelper, os
+import configHelper, numpy
 from astropy.io import fits
 from astropy.wcs import WCS
-from astropy.vo.client.conesearch import conesearch
-from astropy.table import Table, vstack
-from astropy.utils import data
-import astropy.table
 
-def distance(pos1, pos2):
-	return math.sqrt( (pos1[0]-pos2[0])**2 + (pos1[1]-pos2[1])**2)
-
-def gridCircle(x0, y0, radius, grid):
-	x = radius;
-	y = 0;
-	decisionOver2 = 1 - x;   
-
-	while( y <= x ):
-		grid[ x0: x + x0,  y0: y + y0] = 132 # Octant 1
-		grid[ x0: y + x0,  y0: x + y0] = 132 # Octant 2
-		grid[ -x + x0:x0, y0:y + y0] = 132 # Octant 4
-		grid[ -y + x0: x0, y0:x + y0] = 132 # Octant 3
-		grid[-x + x0:x0, -y + y0:y0] = 132 # Octant 5
-		grid[-y + x0:x0, -x + y0:y0] = 132 # Octant 6
-		grid[ x0:x + x0, -y + y0:y0] = 132 # Octant 7
-		grid[ x0:y + x0, -x + y0:y0] = 132 # Octant 8
-		y+= 1
-		if (decisionOver2<=0):
-			decisionOver2 += 2 * y + 1;  # Change in decision criterion for y -> y+1
-		else:
-			x-= 1;
-			decisionOver2 += 2 * (y - x) + 1;   # Change for y -> y+1, x -> x-1
-	return grid
-
-def getVizierObjects(ra, dec, radius):
-	with data.conf.set_temp('remote_timeout', 60):
-		try: 
-			search = conesearch(center=(ra, dec),
-                radius=0.05,
-                verb=3,
-                catalog_db="http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=IPHAS2&-out.all&")
-		except: 
-			print("Failed to retrieve any results from Vizier.")
-	return search.to_table()
-
-def plotCircles(objectTable, margins):
-	margins = checkMargins(margins)
-	ppgplot.pgsci(3)
-	ppgplot.pgsfs(2)
-	index = 0
-	print("Margins:", margins)
-	for obj in objectTable:
-		ra = obj['ra']
-		dec = obj['dec']
-		c = obj['class']
-		if ra > margins[1][0] and ra < margins[0][0] and dec<margins[0][1] and dec>margins[1][1]:
-			# print index, ra, dec, x, y, c
-			index+= 1
-			colour = 1
-			if c==-9: colour = 2   # Red  = Saturated
-			if c==1: colour = 4    # Blue   = Galaxy
-			if c==-3: colour = 5   # Cyan   = Probable Galaxy
-			if c==-1: colour = 3   # Green = Star
-			if c==-2: colour = 8   # Orange = Probable Star
-			if c==0: colour = 2    # Red    = Noise
-			ppgplot.pgsci(colour)
-			ppgplot.pgcirc(obj['x'], obj['y'], 5 + (5* obj['pStar']))
-	return (index+1)
-	
-def redraw():
-	ppgplot.pgslct(imagePlot['pgplotHandle'])
-	ppgplot.pgslw(3)
-	ppgplot.pggray(boostedImage, xlimits[0], xlimits[1]-1, ylimits[0], ylimits[1]-1, imageMinMax[0], imageMinMax[1], imagePlot['pgPlotTransform'])
-	if plotSources: plotCircles(dr2Objects, margins)
-	if plotHa:
-		reduceddr2cat = []
-		for selected in extendedHaSources:
-			reduceddr2cat.append(dr2Objects[selected])
-		plotCircles(reduceddr2cat, margins)
-	if plotGrid: 
-		print("Plotting grid")
-		ppgplot.pgsci(6)
-		xVals = [p[0] for p in pixelGrid] 
-		yVals = [p[1] for p in pixelGrid]
-		ppgplot.pgpt(xVals, yVals, 2)
-	if plotPointings:
-		ppgplot.pgsci(2)
-		ppgplot.pgsfs(2)
-		ppgplot.pgslw(10)
-		for p in pointings:
-			ppgplot.pgcirc(p['x'], p['y'], 30)
-			
-			
-def makeGrid(width, height, size):
-	grid = []
-	for x in numpy.arange(size, width, size):
-		for y in numpy.arange(size, height, size):
-			grid.append((x,y))
-	return grid	
+class fitsObject:
+	def __init__(self):
+		self.ra = 0;
+		self.dec = 0;
+		self.filename = ""
+		self.path = ""
+		self.filter = None
+		self.CCD = None
 		
-def makeMask():
-	bitmap = numpy.zeros(numpy.shape(imageData))
-	border = 50
-	# First mask off the border
-	bitmap[0:border, 0:width] = 132
-	bitmap[height-border:height, 0:width] = 132
-	bitmap[0:height, 0:border] = 132
-	bitmap[0:height, width-border:width] = 132
-	
-	for index, object in enumerate(dr2Objects):
-		if object['class'] != -1: continue   # Skip objects that are not stars  
-		radius = object['pixelFWHM'] * 4
-		x = object['x']  
-		y = object['y'] 
-		if (x<border) or (x>(width-border)): continue
-		if (y<border) or (y>(height-border)): continue
-		bitmap = gridCircle(y, x, radius, bitmap)
-		sys.stdout.write("\rMasking: %d of %d."%(index, len(dr2Objects)))
-		sys.stdout.flush()
-	sys.stdout.write("\n")
-	sys.stdout.flush()
-	
-	return bitmap
-	
-def drawMask(mask):
-	print("Drawing the mask.")
-	if 'pgplotHandle' not in maskPlot.keys():
-		maskPlot['pgplotHandle'] = ppgplot.pgopen('/xs')
-		maskPlot['pgPlotTransform'] = [0, 1, 0, 0, 0, 1]
-	else:
-		ppgplot.pgslct(maskPlot['pgplotHandle'])
-	ppgplot.pgpap(paperSize, aspectRatio)
-	ppgplot.pgsvp(0.0, 1.0, 0.0, 1.0)
-	ppgplot.pgswin(0, width, 0, height)	
-	ppgplot.pggray(mask, 0, width-1, 0, height-1, 0, 255, maskPlot['pgPlotTransform'])
-	ppgplot.pgslct(imagePlot['pgplotHandle'])
-	
-	
+	def setCentre(self, ra, dec):
+		self.ra = ra
+		self.dec = dec
 
-def filterGrid(pixelGrid):
-	print("Old grid length:%d"%len(pixelGrid))
-	newGrid = []
-	radius = 7
-	rejectXarray = [object['x'] for object in dr2Objects]
-	rejectYarray = [object['y'] for object in dr2Objects]
-	for position in pixelGrid:
-		found = False
-		for x,y in zip(rejectXarray, rejectYarray):
-			if distance((x,y), position) < radius:
-				print (position,  " is rejected, distance was %f"%distance((x,y), position))
-				found=True
-				continue
-		if not found: newGrid.append(position)
-	print("New grid length:%d"%len(newGrid))
-	return newGrid
-		
-		
-def checkMargins(margins):
-	if margins[0][0] < margins[1][0]:
-		temp = margins[0][0]
-		margins[0][0] = margins[1][0]
-		margins[1][0] = temp
-	if margins[0][1] < margins[1][1]:
-		temp = margins[0][1]
-		margins[0][1] = margins[1][1]
-		margins[1][1] = temp
-	return margins
-		
-def withinMargins(table, namedColumns):
-	print(namedColumns)
-	return True
-	
+def joinPaths(path1, path2):
+	if path1[-1] == '/': return path1 + path2
+	return path1 + '/' + path2
 
 if __name__ == "__main__":
 	
-	parser = argparse.ArgumentParser(description='Loads an IFAS reduced image. Displays it with PGPLOT.')
-	parser.add_argument('filename', type=str, help='The FITS image file.')
+	parser = argparse.ArgumentParser(description='Crawls through the directories and gathers file and FITS header meta-data.')
+	parser.add_argument('--datapath', type=str, help='The root path for the IPHAS images.')
 	parser.add_argument('--save', action="store_true", help='Write the input parameters to the config file as default values.')
-	parser.add_argument('--ignorecache', action="store_true", help='Ignore the cached DR2 catalogue. Will overwrite one if it already exists.')
 	args = parser.parse_args()
 	print(args)
-	
-	config = configHelper.configClass("inspectIPHASImage")
+
 	if args.save:
 		config.save()
 	
-	paperSize = 5.5  # Paper size in inches
-	imageMinMax = (0, 255)
-	plotSources = False
-	plotHa = False
-	plotGrid = False
-	invertedColours = True
-	pixelGrid = []
-	maskPlot = {}
-	mask = []
-	pixelScale = 0.333 # arcseconds per pixel
-	pointings = []
-	plotPointings = False
+	config = configHelper.configClass("metaData")
+	configDefaults  = {
+		"RootPath": "/Users/rashley/astro/IPHAS",
+		"SearchPath": ".*(r[0-9]{3})"
+	}
+	config.setDefaults(configDefaults)
+	rootPath = config.assertProperty("RootPath", args.datapath)
+	searchPath = config.assertProperty("SearchPath", None)
+	search_re = re.compile(searchPath)
+	
+	fitsObjects = []
+	# Find all folders in data path
+	folders = os.walk(rootPath)
+	IPHASFolders = []
+	for f in folders:
+		m = search_re.match(f[0])
+		if (m): 
+			IPHASFolders.append(f)
+			print(m.group(0))
+	
+	outCSV = open("data.csv", 'wt')
+	outCSV.write("filename, CCD, filter, ra, dec, cached\n")
+	for f in IPHASFolders:
+		print("Looking at the files in %s."%(f[0]))
+		fitsFiles = []
+		for file in f[2]:
+			if "fits.fz" in file:
+				sys.stdout.write("\r%s    "%file)
+				sys.stdout.flush()
 		
-	hdulist = fits.open(args.filename)
+				newfitsObject = fitsObject()
+				fitsFiles.append(file)
+				hdulist = fits.open(joinPaths(f[0], file))
+				newfitsObject.filter = hdulist[1].header['WFFBAND']
+				newfitsObject.CCD = hdulist[1].header['DASCHAN']
+				wcsSolution = WCS(hdulist[1].header)
+				(height, width) = numpy.shape(hdulist[1].data)
+				imageCentre = [ width/2, height/2]
+				ra, dec = wcsSolution.all_pix2world([imageCentre], 1)[0]
+				newfitsObject.setCentre(ra, dec)
+				newfitsObject.path = f[0]
+				newfitsObject.filename = file
+				cacheFilename = file[:9] + "_dr2_cache.fits"
+				if os.path.exists(joinPaths(f[0], cacheFilename)):
+					sys.stdout.write(" found cached dr2 data in:" + str(cacheFilename))
+					sys.stdout.flush()
+					newfitsObject.cached = True
+				else:
+					newfitsObject.cached = False
+					
+				hdulist.close()
+				fitsObjects.append(newfitsObject)
+				outCSV.write("%s, %s, %s, %f, %f, %s\n"%(newfitsObject.filename, newfitsObject.CCD, newfitsObject.filter, newfitsObject.ra, newfitsObject.dec, newfitsObject.cached))
+				outCSV.flush()
+				
+		sys.stdout.write("\n")
+		sys.stdout.flush()
+		print("%d files in this folder"%len(fitsFiles))
+
 	
-	print(hdulist.info())
+	outCSV.close()
+	sys.exit()
 	
-	filter = None
+	
+	
 	for card in hdulist:
 		print(card.header.keys())
 		print(repr(card.header))
@@ -215,7 +107,6 @@ if __name__ == "__main__":
 				filter = card.header[key]
 	
 	imageData =  hdulist[1].data
-	savedImageData = numpy.copy(imageData)
 
 	
 	wcsSolution = WCS(hdulist[1].header)
@@ -261,6 +152,8 @@ if __name__ == "__main__":
 		print("Looking for a cached copy of the DR2 catalogue:", dr2Filename)
 		if os.path.exists(dr2Filename):
 			cached = True
+
+
 
 	if not cached:
 		for index, yCentre in enumerate(numpy.arange(height/4, height, height/4)):
@@ -329,11 +222,11 @@ if __name__ == "__main__":
 		
 		sys.stdout.write("\n")
 		sys.stdout.flush()
-		print("dr2nearby table is %d rows long."%len(dr2nearby))
+		
 		print("Trimming out objects that lie outside the limits of this image.")
 		margins = checkMargins(margins)
 		print("Margins: " + str(margins))
-		rejectedRows = 0
+	
 		for index, row in enumerate(dr2nearby):
 			ra = row['RAJ2000']
 			dec = row['DEJ2000']
@@ -341,11 +234,9 @@ if __name__ == "__main__":
 				sys.stdout.write("\rRejecting this row: %d %f, %f is outside image borders."%(index, ra, dec))
 				sys.stdout.flush()
 				dr2nearby.remove_row(index)
-				rejectedRows+= 1
 		
-		sys.stdout.write("\n%d rows rejected."%rejectedRows)
+		sys.stdout.write("\n")
 		sys.stdout.flush()
-		print("dr2nearby table is %d rows long."%len(dr2nearby))
 				
 		dr2nearby.write(dr2Filename, format='fits', overwrite=True)
 	
@@ -370,7 +261,6 @@ if __name__ == "__main__":
 		dr2Object['pStar'] = row['pStar']
 		dr2Object['iClass'] = row['iClass']
 		dr2Object['haClass'] = row['haClass']
-		dr2Object['pixelFWHM'] = row['haSeeing'] / pixelScale
 		x, y = wcsSolution.all_world2pix([dr2Object['ra']], [dr2Object['dec']], 1)
 		dr2Object['x'] = x[0]
 		dr2Object['y'] = y[0]
@@ -390,8 +280,7 @@ if __name__ == "__main__":
 	xlimits = (0, width)
 	ylimits = (0, height)
 	
-	# plotCircles(dr2Objects, margins)
-	redraw()
+	plotCircles(dr2Objects, margins)
 
 	help = []
 	helpItem = {'key': "p", 'text': "Toggle the plotting of DR2 sources on/off."}
@@ -410,8 +299,6 @@ if __name__ == "__main__":
 	y=height/2
 	newWidth = width
 	newHeight = height
-	pixelGrid = makeGrid(width, height, 100)
-	
 	ppgplot.pgsci(3)
 	keyPressed = None
 	while keyPressed != 'q':
@@ -434,11 +321,8 @@ if __name__ == "__main__":
 			redraw()
 		
 		if keyPressed== 'h':
-			if not plotHa:
-				plotHa = True
-				plotSources = False
-			else:
-				plotHa = False
+			plotHa = True
+			plotSources = False
 			redraw() 
 		
 			
@@ -479,63 +363,6 @@ if __name__ == "__main__":
 			ppgplot.pgswin(xlimits[0], xlimits[1], ylimits[0], ylimits[1])
 			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
 			redraw()
-			
-		if keyPressed=='g':
-			if not plotGrid:
-				plotGrid = True
-				redraw()
-			else:
-				plotGrid = False
-				redraw()
-				
-		if keyPressed=='m':
-			mask = makeMask()
-			drawMask(mask)
-		
-		if keyPressed=='c':
-			boostedImage+= mask
-			redraw()
-	
-		if keyPressed=='a':
-			booleanMask = numpy.ma.make_mask(mask)
-			maskedImageData = numpy.ma.masked_array(imageData, booleanMask)
-			maskedBoostedImage = numpy.ma.masked_array(boostedImage, booleanMask)
-			imageData = numpy.ma.filled(maskedImageData, 0)
-			boostedImage = numpy.ma.filled(maskedBoostedImage, 0)
-			redraw()
-	
-		if keyPressed=='f':
-			radius = 50
-			imageCopy = numpy.copy(imageData)
-			maskedImageCopy = numpy.ma.masked_array(imageCopy, mask = False)
-			for index in range(100):
-				maximum = numpy.amax(imageCopy)
-				flatPosition =  numpy.argmax(imageCopy)
-				position = numpy.unravel_index(flatPosition, numpy.shape(imageData))
-				print(maximum, position[1], position[0])
-				pointingObject = { 'x': position[1], 'y': position[0]}
-				pointings.append(pointingObject)
-				ppgplot.pgsfs(1)
-				ppgplot.pgsci(5)
-				ppgplot.pgcirc(position[1], position[0], radius)
-				tempBitmap = numpy.zeros(numpy.shape(imageCopy))
-				tempBitmap = gridCircle(position[0], position[1], radius, tempBitmap)
-				booleanMask = numpy.ma.make_mask(tempBitmap)
-				maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
-				imageCopy = numpy.ma.filled(maskedImageCopy, 0)
-				
-			print pointings	
-				
-				
-		if keyPressed=='z':
-			plotPointings = True
-			imageData = savedImageData
-			boostedImage = generalUtils.percentiles(imageData, 20, 99)
-			redraw()
-			
-		if keyPressed=='r':
-			pixelGrid = filterGrid(pixelGrid)
-			redraw() 
 			
 		if keyPressed=='o':
 			if newWidth == width: continue
