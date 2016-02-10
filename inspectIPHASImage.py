@@ -12,6 +12,35 @@ from astropy.table import Table, vstack
 from astropy.utils import data
 import astropy.table
 
+def getBrightStars(ra, dec, radius):
+	print(ra, dec, radius)
+	maglimit = 17
+	with data.conf.set_temp('remote_timeout', 60):
+		try: 
+			usno = 'The USNO-A2.0 Catalogue (Monet+ 1998) 1'
+			search = conesearch(center=(ra, dec),
+                radius=radius,
+                verb=3,
+				cache=True, 
+                catalog_db=usno)
+		except: 
+			print("Failed to retrieve any results from Vizier.")
+	brightStarsTable = search.to_table()
+	brightStarsArray = []
+	print("Found %d bright stars in %f degree radius."%(len(brightStarsTable), radius))
+	for row in brightStarsTable:
+		if row['Rmag']<maglimit:
+			star = {}
+			star['ra'] = row['_RAJ2000']
+			star['dec'] = row['_DEJ2000']
+			star['Rmag'] = row['Rmag']
+			x, y = wcsSolution.all_world2pix([star['ra']], [star['dec']], 1)
+			star['x'] = x
+			star['y'] = y
+			brightStarsArray.append(star)
+	print ("%d are brighter than R=%.1f"%(len(brightStarsArray), maglimit))
+	return brightStarsArray
+
 def distance(pos1, pos2):
 	return math.sqrt( (pos1[0]-pos2[0])**2 + (pos1[1]-pos2[1])**2)
 
@@ -94,6 +123,12 @@ def redraw():
 		ppgplot.pgslw(10)
 		for p in pointings:
 			ppgplot.pgcirc(p['x'], p['y'], 30)
+	if plotBrightStars:
+		ppgplot.pgsci(3)
+		ppgplot.pgsfs(2)
+		ppgplot.pgslw(10)
+		for b in brightStars:
+			ppgplot.pgcirc(b['x'], b['y'], 40)
 			
 			
 def makeGrid(width, height, size):
@@ -125,6 +160,16 @@ def makeMask():
 	sys.stdout.write("\n")
 	sys.stdout.flush()
 	
+	# Also mask out the really bright stars
+	for index, object in enumerate(brightStars):
+		radius = 30
+		x = object['x']  
+		y = object['y'] 
+		if (x<border) or (x>(width-border)): continue
+		if (y<border) or (y>(height-border)): continue
+		bitmap = gridCircle(y, x, radius, bitmap)
+		
+		
 	return bitmap
 	
 def drawMask(mask):
@@ -194,6 +239,8 @@ if __name__ == "__main__":
 	plotSources = False
 	plotHa = False
 	plotGrid = False
+	plotBrightStars = True
+	brightStars = []
 	invertedColours = True
 	pixelGrid = []
 	maskPlot = {}
@@ -201,6 +248,8 @@ if __name__ == "__main__":
 	pixelScale = 0.333 # arcseconds per pixel
 	pointings = []
 	plotPointings = False
+	
+	print ("Astropy cache dir %s."%astropy.config.get_cache_dir())
 		
 	hdulist = fits.open(args.filename)
 	
@@ -253,6 +302,9 @@ if __name__ == "__main__":
 	margins = checkMargins(margins)
 	print("ra, dec limits:", margins)
 	
+	
+	print("Looking for bright stars")
+	brightStars = getBrightStars(ra, dec, 0.5)
 	
 	filenameParts = args.filename.split('.')
 	dr2Filename = filenameParts[0] + "_dr2_cache.fits"
@@ -424,7 +476,7 @@ if __name__ == "__main__":
 			print("Help:")
 			for helpItem in help:
 				print("\t" + helpItem['key'] + " : " +  helpItem['text'])
-			print()
+			print("")
 		if keyPressed== 'p':
 			if plotSources == True:
 				plotSources = False
@@ -505,7 +557,7 @@ if __name__ == "__main__":
 			redraw()
 	
 		if keyPressed=='f':
-			radius = 50
+			radius = 180
 			imageCopy = numpy.copy(imageData)
 			maskedImageCopy = numpy.ma.masked_array(imageCopy, mask = False)
 			for index in range(100):
@@ -531,6 +583,13 @@ if __name__ == "__main__":
 			plotPointings = True
 			imageData = savedImageData
 			boostedImage = generalUtils.percentiles(imageData, 20, 99)
+			redraw()
+		
+		if keyPressed=='b':
+			if plotBrightStars:
+				plotBrightStars = False
+			else:
+				plotBrightStars = True
 			redraw()
 			
 		if keyPressed=='r':
