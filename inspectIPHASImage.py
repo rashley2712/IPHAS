@@ -14,20 +14,37 @@ import astropy.table
 
 def getBrightStars(ra, dec, radius):
 	print(ra, dec, radius)
-	maglimit = 17
-	with data.conf.set_temp('remote_timeout', 60):
-		try: 
-			usno = 'The USNO-A2.0 Catalogue (Monet+ 1998) 1'
-			search = conesearch(center=(ra, dec),
-                radius=radius,
-                verb=3,
-				cache=True, 
-                catalog_db=usno)
-		except: 
-			print("Failed to retrieve any results from Vizier.")
-	brightStarsTable = search.to_table()
+	maglimit = 30
+	
+	# First look for a cached copy of this data
+	filenameParts = args.filename.split('.')
+	usnoCache = filenameParts[0] + "_usno_cache.fits"
+	usnoCached = False
+	if not args.ignorecache:
+		print("Looking for a cached copy of the USNO catalogue:", usnoCache)
+		if os.path.exists(usnoCache):
+			usnoCached = True
+	
+	if usnoCached:
+		brightStarsTable = Table.read(usnoCache)
+	else:		
+		with data.conf.set_temp('remote_timeout', 60):
+			try: 
+				usno = 'The USNO-A2.0 Catalogue (Monet+ 1998) 1'
+				search = conesearch(center=(ra, dec),
+               		radius=radius,
+                	verb=3,
+					cache=True, 
+                	catalog_db=usno)
+			except: 
+				print("Failed to retrieve any results from Vizier.")
+				return None
+			brightStarsTable = search.to_table()
+			print("Found %d bright stars in %f degree radius."%(len(brightStarsTable), radius))
+			brightStarsTable.write(usnoCache, format='fits', overwrite=True)
+			
 	brightStarsArray = []
-	print("Found %d bright stars in %f degree radius."%(len(brightStarsTable), radius))
+	
 	for row in brightStarsTable:
 		if row['Rmag']<maglimit:
 			star = {}
@@ -38,6 +55,10 @@ def getBrightStars(ra, dec, radius):
 			star['x'] = x
 			star['y'] = y
 			brightStarsArray.append(star)
+			if star['Rmag']>12:
+				star['radius'] = 40*math.exp((-star['Rmag']+12)/4)
+			else: 
+				star['radius'] = 40
 	print ("%d are brighter than R=%.1f"%(len(brightStarsArray), maglimit))
 	return brightStarsArray
 
@@ -162,7 +183,7 @@ def makeMask():
 	
 	# Also mask out the really bright stars
 	for index, object in enumerate(brightStars):
-		radius = 30
+		radius = object['radius']
 		x = object['x']  
 		y = object['y'] 
 		if (x<border) or (x>(width-border)): continue
@@ -171,6 +192,19 @@ def makeMask():
 		
 		
 	return bitmap
+	
+def drawSuperPixel(superPixel):
+	
+	if 'pgplotHandle' not in maskPlot.keys():
+		maskPlot['pgplotHandle'] = ppgplot.pgopen('/xs')
+		maskPlot['pgPlotTransform'] = [0, 1, 0, 0, 0, 1]
+	else:
+		ppgplot.pgslct(maskPlot['pgplotHandle'])
+	ppgplot.pgpap(paperSize, aspectRatio)
+	ppgplot.pgsvp(0.0, 1.0, 0.0, 1.0)
+	ppgplot.pgswin(0, width, 0, height)	
+	ppgplot.pggray(mask, 0, width-1, 0, height-1, 0, 255, maskPlot['pgPlotTransform'])
+	ppgplot.pgslct(imagePlot['pgplotHandle'])
 	
 def drawMask(mask):
 	print("Drawing the mask.")
@@ -558,13 +592,16 @@ if __name__ == "__main__":
 	
 		if keyPressed=='f':
 			radius = 180
+			superPixelSize = 5
+			superPixelArea = superPixelSize*superPixelSize
 			imageCopy = numpy.copy(imageData)
 			maskedImageCopy = numpy.ma.masked_array(imageCopy, mask = False)
-			for index in range(100):
+			for index in range(20):
 				maximum = numpy.amax(imageCopy)
 				flatPosition =  numpy.argmax(imageCopy)
 				position = numpy.unravel_index(flatPosition, numpy.shape(imageData))
 				print(maximum, position[1], position[0])
+				superPixel = numpy.array()
 				pointingObject = { 'x': position[1], 'y': position[0]}
 				pointings.append(pointingObject)
 				ppgplot.pgsfs(1)
