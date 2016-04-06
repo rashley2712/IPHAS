@@ -12,6 +12,17 @@ from astropy.table import Table, vstack
 from astropy.utils import data
 import astropy.table
 
+def createPGplotWindow(handle, width, height):
+	""" Set up the PGPLOT windows """
+	
+	newPlot = {}
+	newPlot['pgplotHandle'] = ppgplot.pgopen('/xs')
+	ppgplot.pgpap(2, 1)
+	ppgplot.pgsvp(0.0, 1.0, 0.0, 1.0)
+	ppgplot.pgswin(0, width, 0, height)
+	
+	return newPlot
+
 def getBrightStars(ra, dec, radius):
 	print(ra, dec, radius)
 	maglimit = 30
@@ -48,8 +59,8 @@ def getBrightStars(ra, dec, radius):
 	for row in brightStarsTable:
 		if row['Rmag']<maglimit:
 			star = {}
-			star['ra'] = row['_RAJ2000']
-			star['dec'] = row['_DEJ2000']
+			star['ra'] = row['RAJ2000']
+			star['dec'] = row['DEJ2000']
 			star['Rmag'] = row['Rmag']
 			x, y = wcsSolution.all_world2pix([star['ra']], [star['dec']], 1)
 			star['x'] = x
@@ -273,7 +284,7 @@ if __name__ == "__main__":
 	plotSources = False
 	plotHa = False
 	plotGrid = False
-	plotBrightStars = True
+	plotBrightStars = False
 	brightStars = []
 	invertedColours = True
 	pixelGrid = []
@@ -490,7 +501,10 @@ if __name__ == "__main__":
 	help.append(helpItem)
 	helpItem = {'key': "q", 'text': "Quit."}
 	help.append(helpItem)
-		
+	helpItem = {'key': "f", 'text': "Find local Ha maxima."}
+	help.append(helpItem)	
+	helpItem = {'key': "l", 'text': "Show location of cursor."}
+	help.append(helpItem)
 	# try: 
 	x=width/2
 	y=height/2
@@ -533,6 +547,12 @@ if __name__ == "__main__":
 			if invertedColours: invertedColours= False
 			else: invertedColours=True
 			redraw()
+			
+		if keyPressed== 'l':
+			ra, dec = wcsSolution.all_pix2world(x, y, 1)
+			positionString = generalUtils.toSexagesimal((ra, dec))
+			print "Cursor location: [%d, %d]  %s (%f, %f)"%(x, y, positionString, ra, dec)
+			
 			
 		if keyPressed=='i':
 			print("Zoom requested at (%0.0f, %0.0f)"%(x, y))
@@ -592,26 +612,39 @@ if __name__ == "__main__":
 	
 		if keyPressed=='f':
 			radius = 180
-			superPixelSize = 5
+			superPixelSize = 15
 			superPixelArea = superPixelSize*superPixelSize
+			spPreview = createPGplotWindow("preview", superPixelSize, superPixelSize)
 			imageCopy = numpy.copy(imageData)
 			maskedImageCopy = numpy.ma.masked_array(imageCopy, mask = False)
-			for index in range(20):
+			for index in range(50):
 				maximum = numpy.amax(imageCopy)
 				flatPosition =  numpy.argmax(imageCopy)
 				position = numpy.unravel_index(flatPosition, numpy.shape(imageData))
 				print(maximum, position[1], position[0])
-				superPixel = numpy.array()
+				startX = position[1]-superPixelSize/2
+				startY = position[0]-superPixelSize/2
+				superPixel = imageCopy[startY:startY+superPixelSize, startX:startX+superPixelSize]
+				ppgplot.pgslct(spPreview['pgplotHandle'])
+				boostedImage = generalUtils.percentiles(superPixel, 20, 99)
+				ppgplot.pggray(boostedImage, 0, superPixelSize-1, 0, superPixelSize-1, 0, 255, imagePlot['pgPlotTransform'])
+				ppgplot.pgslct(imagePlot['pgplotHandle'])
 				pointingObject = { 'x': position[1], 'y': position[0]}
 				pointings.append(pointingObject)
-				ppgplot.pgsfs(1)
+				ppgplot.pgsfs(2)
 				ppgplot.pgsci(5)
 				ppgplot.pgcirc(position[1], position[0], radius)
+				xpts = [startX, startX, startX+superPixelSize, startX+superPixelSize]
+				ypts = [startY, startY+superPixelSize, startY+superPixelSize, startY]
+				ppgplot.pgsfs(2)
+				ppgplot.pgsci(4)
+				ppgplot.pgpoly(xpts, ypts)
 				tempBitmap = numpy.zeros(numpy.shape(imageCopy))
 				tempBitmap = gridCircle(position[0], position[1], radius, tempBitmap)
 				booleanMask = numpy.ma.make_mask(tempBitmap)
 				maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
 				imageCopy = numpy.ma.filled(maskedImageCopy, 0)
+				time.sleep(3)
 				
 			print pointings	
 				
