@@ -75,6 +75,10 @@ def getBrightStars(ra, dec, radius):
 
 def distance(pos1, pos2):
 	return math.sqrt( (pos1[0]-pos2[0])**2 + (pos1[1]-pos2[1])**2)
+	
+def distanceP(p1, p2):
+	return math.sqrt( (p1['x']-p2['x'])**2 + (p1['y']-p2['y'])**2)
+	
 
 def gridCircle(x0, y0, radius, grid):
 	x = radius;
@@ -172,7 +176,7 @@ def makeGrid(width, height, size):
 		
 def makeMask():
 	bitmap = numpy.zeros(numpy.shape(imageData))
-	border = 50
+	border = borderMask
 	# First mask off the border
 	bitmap[0:border, 0:width] = 132
 	bitmap[height-border:height, 0:width] = 132
@@ -293,6 +297,12 @@ if __name__ == "__main__":
 	pixelScale = 0.333 # arcseconds per pixel
 	pointings = []
 	plotPointings = False
+	superPixelSize = 20
+	borderMask = 50
+	numSourcesRequired = 100
+	previewSuperPixel = False
+	spPreview = None
+	spacingLimit = 30./60.  # Minimum spacing of pointings in arcminutes
 	
 	print ("Astropy cache dir %s."%astropy.config.get_cache_dir())
 		
@@ -457,7 +467,7 @@ if __name__ == "__main__":
 	
 	# Move table into a dictionary object
 	dr2Objects = []
-	for row in dr2nearby:
+	for index, row in enumerate(dr2nearby):
 		IPHAS2name = row['IPHAS2']
 		dr2Object={}
 		dr2Object['name'] = IPHAS2name
@@ -472,8 +482,12 @@ if __name__ == "__main__":
 		dr2Object['x'] = x[0]
 		dr2Object['y'] = y[0]
 		dr2Objects.append(dr2Object)
+		if  (index%100) == 0:
+			sys.stdout.write("\rCopying: %d of %d."%(index, len(dr2nearby)))
+			sys.stdout.flush()
+	sys.stdout.write("\n")
+	sys.stdout.flush()
 		
-	
 	
 	# Run through all objects and find the ones that are haClass = "+1" but iClass != "+1" and overall class = "+1"
 	extendedHaSources = []
@@ -482,7 +496,6 @@ if __name__ == "__main__":
 			extendedHaSources.append(index)
 	
 	print("Found %d extended Ha sources out of %d total objects in DR2."%(len(extendedHaSources), len(dr2Objects)))
-	
 	
 	xlimits = (0, width)
 	ylimits = (0, height)
@@ -510,8 +523,8 @@ if __name__ == "__main__":
 	y=height/2
 	newWidth = width
 	newHeight = height
-	pixelGrid = makeGrid(width, height, 100)
-	
+	# pixelGrid = makeGrid(width, height, 100)
+	originalImageData = numpy.copy(imageData)
 	ppgplot.pgsci(3)
 	keyPressed = None
 	while keyPressed != 'q':
@@ -586,13 +599,105 @@ if __name__ == "__main__":
 			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
 			redraw()
 			
-		if keyPressed=='g':
+		"""if keyPressed=='g':
 			if not plotGrid:
 				plotGrid = True
 				redraw()
 			else:
 				plotGrid = False
-				redraw()
+				redraw()"""
+		if keyPressed=='g':
+			# Create a complete grid for superPixels
+			superPixelList = []
+			if previewSuperPixel: spPreview = createPGplotWindow("preview", superPixelSize, superPixelSize)
+			imageCopy = numpy.copy(originalImageData)
+			booleanMask = numpy.ma.make_mask(mask)
+			maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
+			for yStep in range(borderMask, height-borderMask, superPixelSize):
+				for xStep in range(borderMask, width-borderMask, superPixelSize):
+					x1 = xStep
+					x2 = xStep + superPixelSize
+					y1 = yStep
+					y2 = yStep + superPixelSize
+					xpts = [x1, x1, x2, x2]
+					ypts = [y1, y2, y2, y1]
+					ppgplot.pgsfs(2)
+					ppgplot.pgsci(4)
+					ppgplot.pgpoly(xpts, ypts)
+					superPixel = maskedImageCopy[y1:y2, x1:x2]
+					if previewSuperPixel: 	
+						ppgplot.pgslct(spPreview['pgplotHandle'])
+						boostedPreview = generalUtils.percentiles(superPixel, 20, 99)
+						ppgplot.pggray(boostedPreview, 0, superPixelSize-1, 0, superPixelSize-1, 0, 255, imagePlot['pgPlotTransform'])
+						ppgplot.pgslct(imagePlot['pgplotHandle'])
+				
+					superPixelObject = {}
+					mean = float(numpy.ma.mean(superPixel))
+					if math.isnan(mean): continue
+					superPixelObject['mean'] = mean
+					superPixelObject['median'] = numpy.ma.median(superPixel)
+					superPixelObject['max'] = numpy.ma.min(superPixel)
+					superPixelObject['min'] = numpy.ma.max(superPixel)
+					superPixelObject['x1'] = x1
+					superPixelObject['y1'] = y1
+					variance = numpy.ma.var(superPixel)
+					numPixels= numpy.ma.count(superPixel)
+					superPixelObject['varppixel'] = variance/numPixels
+					superPixelList.append(superPixelObject)
+				
+			# Sort superpixels
+			superPixelList.sort(key=lambda x: x['mean'], reverse=True)
+			pointings = []
+			distanceLimitPixels = spacingLimit*60/pixelScale
+			varianceThreshold = 5
+			for index, s in enumerate(superPixelList):
+				print index, s['mean'], s['varppixel']
+				if s['varppixel']>varianceThreshold: continue
+				pointingObject = { 'x': s['x1'] + superPixelSize/2, 'y': s['y1'] + superPixelSize/2}
+				pointingObject['mean'] = s['mean']
+				pointingObject['varppixel'] = s['varppixel']
+				# Check if this is not near to an existing pointing
+				reject = False
+				for p in pointings:
+					if distanceP(p, pointingObject) < distanceLimitPixels: 
+						reject=True
+						break
+				if not reject: pointings.append(pointingObject)
+				if len(pointings)>numSourcesRequired: break;
+			
+			print "Final list"
+			for index, p in enumerate(pointings):
+				print index, p['mean'], p['varppixel']
+				
+		
+			
+		if keyPressed=='s':
+			# Make a superPixel here
+			if spPreview==None:
+				spPreview = createPGplotWindow("preview", superPixelSize, superPixelSize)
+			imageCopy = numpy.copy(originalImageData)
+			booleanMask = numpy.ma.make_mask(mask)
+			maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
+			
+			print "Pixel location: ", x, y
+			x1 = x - superPixelSize/2
+			x2 = x1 + superPixelSize
+			y1 = y - superPixelSize/2
+			y2 = y1 + superPixelSize
+			superPixel = maskedImageCopy[y1:y2, x1:x2]
+			ppgplot.pgslct(spPreview['pgplotHandle'])
+			boostedPreview = generalUtils.percentiles(superPixel, 20, 99)
+			ppgplot.pggray(boostedPreview, 0, superPixelSize-1, 0, superPixelSize-1, 0, 255, imagePlot['pgPlotTransform'])
+			ppgplot.pgslct(imagePlot['pgplotHandle'])
+			print superPixel	
+			superPixelObject = {}
+			superPixelObject['mean'] = numpy.ma.mean(superPixel)
+			superPixelObject['median'] = numpy.ma.median(superPixel)
+			superPixelObject['max'] = numpy.ma.min(superPixel)
+			superPixelObject['min'] = numpy.ma.max(superPixel)
+			superPixelObject['x1'] = x1
+			superPixelObject['y1'] = y1
+			print superPixelObject
 				
 		if keyPressed=='m':
 			mask = makeMask()
@@ -613,13 +718,12 @@ if __name__ == "__main__":
 	
 		if keyPressed=='f':
 			radius = 100
-			superPixelSize = 15
 			superPixelArea = superPixelSize*superPixelSize
 			spPreview = createPGplotWindow("preview", superPixelSize, superPixelSize)
 			imageCopy = numpy.copy(originalImageData)
 			booleanMask = numpy.ma.make_mask(mask)
 			maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
-			for index in range(50):
+			for index in range(numSourcesRequired):
 				maximum = numpy.ma.max(maskedImageCopy)
 				flatPosition =  numpy.ma.argmax(maskedImageCopy, fill_value=0)
 				print "maximum, flat position", maximum, flatPosition
@@ -631,10 +735,11 @@ if __name__ == "__main__":
 				superMax = numpy.ma.max(superPixel)
 				superMin = numpy.ma.min(superPixel)
 				variance = numpy.ma.var(superPixel)
-				print("[%d, %d] \tmax: %d \tmin: %d \t variance: %f"%(position[1], position[0], superMax, superMin, variance))
+				numPixels= numpy.ma.count(superPixel)
+				print("[%d, %d] \tmax: %d \tmin: %d \t variance: %f \t variance/pixel: %f"%(position[1], position[0], superMax, superMin, variance, variance/numPixels))
 				ppgplot.pgslct(spPreview['pgplotHandle'])
-				boostedImage = generalUtils.percentiles(superPixel, 20, 99)
-				ppgplot.pggray(boostedImage, 0, superPixelSize-1, 0, superPixelSize-1, 0, 255, imagePlot['pgPlotTransform'])
+				boostedPreview = generalUtils.percentiles(superPixel, 20, 99)
+				ppgplot.pggray(boostedPreview, 0, superPixelSize-1, 0, superPixelSize-1, 0, 255, imagePlot['pgPlotTransform'])
 				ppgplot.pgsci(0)
 				ppgplot.pgsch(5)
 				ppgplot.pgtext(1, 2, "max: %d"%superMax)
@@ -659,7 +764,7 @@ if __name__ == "__main__":
 				print "Number of non-masked elements", numpy.ma.count(maskedImageCopy)
 				# imageCopy = numpy.ma.filled(maskedImageCopy, 0)
 				# time.sleep(1)
-				
+				ch = ppgplot.pgcurs(x, y)
 			print pointings	
 				
 				
