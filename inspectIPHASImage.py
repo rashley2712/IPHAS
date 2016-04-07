@@ -606,28 +606,38 @@ if __name__ == "__main__":
 			booleanMask = numpy.ma.make_mask(mask)
 			maskedImageData = numpy.ma.masked_array(imageData, booleanMask)
 			maskedBoostedImage = numpy.ma.masked_array(boostedImage, booleanMask)
+			originalImageData = numpy.copy(imageData)
 			imageData = numpy.ma.filled(maskedImageData, 0)
 			boostedImage = numpy.ma.filled(maskedBoostedImage, 0)
 			redraw()
 	
 		if keyPressed=='f':
-			radius = 180
+			radius = 100
 			superPixelSize = 15
 			superPixelArea = superPixelSize*superPixelSize
 			spPreview = createPGplotWindow("preview", superPixelSize, superPixelSize)
-			imageCopy = numpy.copy(imageData)
-			maskedImageCopy = numpy.ma.masked_array(imageCopy, mask = False)
+			imageCopy = numpy.copy(originalImageData)
+			booleanMask = numpy.ma.make_mask(mask)
+			maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
 			for index in range(50):
-				maximum = numpy.amax(imageCopy)
-				flatPosition =  numpy.argmax(imageCopy)
-				position = numpy.unravel_index(flatPosition, numpy.shape(imageData))
-				print(maximum, position[1], position[0])
+				maximum = numpy.ma.max(maskedImageCopy)
+				flatPosition =  numpy.ma.argmax(maskedImageCopy, fill_value=0)
+				print "maximum, flat position", maximum, flatPosition
+				position = numpy.unravel_index(flatPosition, numpy.shape(maskedImageCopy))
 				startX = position[1]-superPixelSize/2
 				startY = position[0]-superPixelSize/2
-				superPixel = imageCopy[startY:startY+superPixelSize, startX:startX+superPixelSize]
+				superPixel = maskedImageCopy[startY:startY+superPixelSize, startX:startX+superPixelSize]
+				print superPixel
+				superMax = numpy.ma.max(superPixel)
+				superMin = numpy.ma.min(superPixel)
+				variance = numpy.ma.var(superPixel)
+				print("[%d, %d] \tmax: %d \tmin: %d \t variance: %f"%(position[1], position[0], superMax, superMin, variance))
 				ppgplot.pgslct(spPreview['pgplotHandle'])
 				boostedImage = generalUtils.percentiles(superPixel, 20, 99)
 				ppgplot.pggray(boostedImage, 0, superPixelSize-1, 0, superPixelSize-1, 0, 255, imagePlot['pgPlotTransform'])
+				ppgplot.pgsci(0)
+				ppgplot.pgsch(5)
+				ppgplot.pgtext(1, 2, "max: %d"%superMax)
 				ppgplot.pgslct(imagePlot['pgplotHandle'])
 				pointingObject = { 'x': position[1], 'y': position[0]}
 				pointings.append(pointingObject)
@@ -641,10 +651,14 @@ if __name__ == "__main__":
 				ppgplot.pgpoly(xpts, ypts)
 				tempBitmap = numpy.zeros(numpy.shape(imageCopy))
 				tempBitmap = gridCircle(position[0], position[1], radius, tempBitmap)
-				booleanMask = numpy.ma.make_mask(tempBitmap)
+				additionalMask = numpy.ma.make_mask(tempBitmap)
+				booleanMask = numpy.ma.mask_or(booleanMask, additionalMask) 
+				
 				maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
-				imageCopy = numpy.ma.filled(maskedImageCopy, 0)
-				time.sleep(3)
+				print "Number of masked elements", numpy.ma.count_masked(maskedImageCopy)
+				print "Number of non-masked elements", numpy.ma.count(maskedImageCopy)
+				# imageCopy = numpy.ma.filled(maskedImageCopy, 0)
+				# time.sleep(1)
 				
 			print pointings	
 				
