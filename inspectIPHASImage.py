@@ -154,11 +154,14 @@ def redraw():
 		yVals = [p[1] for p in pixelGrid]
 		ppgplot.pgpt(xVals, yVals, 2)
 	if plotPointings:
-		ppgplot.pgsci(2)
+		
 		ppgplot.pgsfs(2)
 		ppgplot.pgslw(10)
 		for p in pointings:
+			if p['type']=="Maximum": ppgplot.pgsci(2)
+			if p['type']=="Minimum": ppgplot.pgsci(4)
 			ppgplot.pgcirc(p['x'], p['y'], 30)
+		ppgplot.pgslw(1)
 	if plotBrightStars:
 		ppgplot.pgsci(3)
 		ppgplot.pgsfs(2)
@@ -299,10 +302,11 @@ if __name__ == "__main__":
 	plotPointings = False
 	superPixelSize = 20
 	borderMask = 50
-	numSourcesRequired = 100
+	numSourcesRequired = 50
 	previewSuperPixel = False
 	spPreview = None
 	spacingLimit = 30./60.  # Minimum spacing of pointings in arcminutes
+	varianceThreshold = 5
 	
 	print ("Astropy cache dir %s."%astropy.config.get_cache_dir())
 		
@@ -599,13 +603,6 @@ if __name__ == "__main__":
 			margins = [[ra_limits[0], dec_limits[0]], [ra_limits[1], dec_limits[1]]]
 			redraw()
 			
-		"""if keyPressed=='g':
-			if not plotGrid:
-				plotGrid = True
-				redraw()
-			else:
-				plotGrid = False
-				redraw()"""
 		if keyPressed=='g':
 			# Create a complete grid for superPixels
 			superPixelList = []
@@ -613,6 +610,10 @@ if __name__ == "__main__":
 			imageCopy = numpy.copy(originalImageData)
 			booleanMask = numpy.ma.make_mask(mask)
 			maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
+			pixelBitmapWidth = int((width - 2.*borderMask) / superPixelSize) + 1
+			pixelBitmapHeight = int((height - 2.*borderMask) / superPixelSize) + 1
+			pixelBitmap = numpy.zeros((pixelBitmapHeight, pixelBitmapWidth))
+			pixelBitmap.fill(99E9) 
 			for yStep in range(borderMask, height-borderMask, superPixelSize):
 				for xStep in range(borderMask, width-borderMask, superPixelSize):
 					x1 = xStep
@@ -621,6 +622,8 @@ if __name__ == "__main__":
 					y2 = yStep + superPixelSize
 					xpts = [x1, x1, x2, x2]
 					ypts = [y1, y2, y2, y1]
+					bitmapX = (x1-borderMask)/superPixelSize
+					bitmapY = (y1-borderMask)/superPixelSize
 					ppgplot.pgsfs(2)
 					ppgplot.pgsci(4)
 					ppgplot.pgpoly(xpts, ypts)
@@ -633,7 +636,7 @@ if __name__ == "__main__":
 				
 					superPixelObject = {}
 					mean = float(numpy.ma.mean(superPixel))
-					if math.isnan(mean): continue
+					if math.isnan(mean): continue;
 					superPixelObject['mean'] = mean
 					superPixelObject['median'] = numpy.ma.median(superPixel)
 					superPixelObject['max'] = numpy.ma.min(superPixel)
@@ -643,19 +646,37 @@ if __name__ == "__main__":
 					variance = numpy.ma.var(superPixel)
 					numPixels= numpy.ma.count(superPixel)
 					superPixelObject['varppixel'] = variance/numPixels
+					if superPixelObject['varppixel']>varianceThreshold: continue
+					numMaskedPixels = numpy.ma.count_masked(superPixel)
+					maskedRatio = float(numMaskedPixels)/float(numPixels)
+					pixelBitmap[bitmapY, bitmapX] = mean
+					if maskedRatio>0.70: continue;
 					superPixelList.append(superPixelObject)
+				
+			# Draw the bitmap
+			bitmapPlot = {}
+			bitmapPlot['pgplotHandle'] = ppgplot.pgopen('/xs')
+			minimumPixel = numpy.min(pixelBitmap)
+			pixelBitmap[pixelBitmap==99E9] = minimumPixel
+			ppgplot.pgpap(paperSize, aspectRatio)
+			ppgplot.pgsvp(0.0, 1.0, 0.0, 1.0)
+			ppgplot.pgswin(0, pixelBitmapWidth, 0, pixelBitmapHeight)
+			ppgplot.pggray(generalUtils.percentiles(pixelBitmap, 20, 99), 0, pixelBitmapWidth-1, 0, pixelBitmapHeight-1, 0, 255, imagePlot['pgPlotTransform'])
+			ppgplot.pgslct(imagePlot['pgplotHandle'])
 				
 			# Sort superpixels
 			superPixelList.sort(key=lambda x: x['mean'], reverse=True)
 			pointings = []
 			distanceLimitPixels = spacingLimit*60/pixelScale
-			varianceThreshold = 5
+			
+			# Top sources
 			for index, s in enumerate(superPixelList):
-				print index, s['mean'], s['varppixel']
+				# print index, s['mean'], s['varppixel']
 				if s['varppixel']>varianceThreshold: continue
 				pointingObject = { 'x': s['x1'] + superPixelSize/2, 'y': s['y1'] + superPixelSize/2}
 				pointingObject['mean'] = s['mean']
 				pointingObject['varppixel'] = s['varppixel']
+				pointingObject['type'] = "Maximum"
 				# Check if this is not near to an existing pointing
 				reject = False
 				for p in pointings:
@@ -664,10 +685,27 @@ if __name__ == "__main__":
 						break
 				if not reject: pointings.append(pointingObject)
 				if len(pointings)>numSourcesRequired: break;
+			# Bottom sources
+			for index in range(len(superPixelList)-1, 0, -1):
+				s = superPixelList[index]
+				# print index, s['mean'], s['varppixel']
+				if s['varppixel']>varianceThreshold: continue
+				pointingObject = { 'x': s['x1'] + superPixelSize/2, 'y': s['y1'] + superPixelSize/2}
+				pointingObject['mean'] = s['mean']
+				pointingObject['varppixel'] = s['varppixel']
+				pointingObject['type'] = "Minimum"
+				# Check if this is not near to an existing pointing
+				reject = False
+				for p in pointings:
+					if distanceP(p, pointingObject) < distanceLimitPixels: 
+						reject=True
+						break
+				if not reject: pointings.append(pointingObject)
+				if len(pointings)>(2*numSourcesRequired): break;
 			
 			print "Final list"
 			for index, p in enumerate(pointings):
-				print index, p['mean'], p['varppixel']
+				print index, p['mean'], p['varppixel'], p['type']
 				
 		
 			
