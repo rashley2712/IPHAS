@@ -4,7 +4,7 @@ import IPHASdataClass
 
 class commandClass(cmd.Cmd):
 	""" The command processor """
-	IPHASdata = IPHASdataClass.IPHASdataClass()
+	
 	
 	"""Simple command processor example."""
 	prompt = 'iphas: '
@@ -12,6 +12,9 @@ class commandClass(cmd.Cmd):
 	use_rawinput = False
 	# Do not show a prompt after each command read
 	prompt = ''
+	
+	global IPHASdata
+	IPHASdata = IPHASdataClass.IPHASdataClass()
 	
 	def precmd(self, line):
 		if len(line)==0: return line
@@ -40,6 +43,7 @@ class commandClass(cmd.Cmd):
 	def do_reload(self, line):
 		if 'IPHASdataClass' in sys.modules:  
 		    del sys.modules["IPHASdataClass"]
+		del IPHASdata
 		import IPHASdataClass
 		IPHASdata = IPHASdataClass.IPHASdataClass()
 		return 

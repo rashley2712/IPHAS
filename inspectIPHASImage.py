@@ -300,7 +300,7 @@ if __name__ == "__main__":
 	pixelScale = 0.333 # arcseconds per pixel
 	pointings = []
 	plotPointings = False
-	superPixelSize = 20
+	superPixelSize = 25
 	borderMask = 50
 	numSourcesRequired = 50
 	previewSuperPixel = False

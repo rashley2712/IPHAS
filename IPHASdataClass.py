@@ -29,7 +29,7 @@ class IPHASdataClass:
 		for key in self.FITSHeaders.keys():
 			print key + " : " + str(self.FITSHeaders[key])
 			headersString+= str(key) + " : " + str(self.FITSHeaders[key]) + "\n"
-		print "... headers 5"
+		print "... headers 6"
 			
 	def getFITSHeader(self, key):
 		try:

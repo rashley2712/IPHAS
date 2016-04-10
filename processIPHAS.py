@@ -22,7 +22,6 @@ if __name__ == '__main__':
 				commands(stdin=input).cmdloop()
 			finally:
 				input.close()
-	
 	commands.prompt = 'iphas> '
 	commands.use_rawinput = True
 	commands().cmdloop()
