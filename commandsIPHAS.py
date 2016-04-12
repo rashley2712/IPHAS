@@ -1,6 +1,6 @@
 import cmd, sys
 import IPHASdataClass
-
+import os
 
 class commandClass(cmd.Cmd):
 	""" The command processor """
@@ -13,7 +13,6 @@ class commandClass(cmd.Cmd):
 	# Do not show a prompt after each command read
 	prompt = ''
 	
-	global IPHASdata
 	IPHASdata = IPHASdataClass.IPHASdataClass()
 	
 	def precmd(self, line):
@@ -36,9 +35,10 @@ class commandClass(cmd.Cmd):
 			scriptFile = open(scriptname, 'rt')
 			for line in scriptFile:
 				self.onecmd(line)
-		except:
-			print "Could not find the script:", scriptname
 			return "NOP"
+		except IOError as e:
+			print "Could not find the script:", scriptname
+			return 
 			
 	def do_reload(self, line):
 		if 'IPHASdataClass' in sys.modules:  
@@ -59,15 +59,21 @@ class commandClass(cmd.Cmd):
 		""" load
 		Load a FITS file. """
 		print "Loading...", line
+		if not os.path.exists(line):
+			print "Could not find a file named:", line
+			return
 		
 		self.IPHASdata.loadFITSFile(line)
 		return 
 		
 	def do_show(self, line):
 		""" show
-		Output some information about an stored object """
+		Output some information about a stored object """
 		if line=="headers":
 			self.IPHASdata.showFITSHeaders()
+			return
+		if line=="margins":
+			print "Margins:", self.IPHASdata.getRADECmargins()
 			return
 		self.IPHASdata.getFITSHeader(line)
 	
@@ -77,6 +83,13 @@ class commandClass(cmd.Cmd):
 		output = os.popen(line).read()
 		print output
 		self.last_output = output
+		
+	def do_get(self, line):
+		""" Get an additional object for the image. 
+		eg get cat : Get a catalogue of sources from Vizier."""
+		print "Getting catalogue..."
+		self.IPHASdata.getVizierObjects()
+		return
 		
 	def emptyline(self):
 		return
