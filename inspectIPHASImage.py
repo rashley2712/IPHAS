@@ -279,6 +279,7 @@ if __name__ == "__main__":
 	parser.add_argument('filename', type=str, help='The FITS image file.')
 	parser.add_argument('--save', action="store_true", help='Write the input parameters to the config file as default values.')
 	parser.add_argument('--ignorecache', action="store_true", help='Ignore the cached DR2 catalogue. Will overwrite one if it already exists.')
+	parser.add_argument('--smallscreen', action="store_true", help='Use much smaller PGPLOT image sizes for a small laptop screen.')
 	args = parser.parse_args()
 	print(args)
 	
@@ -287,6 +288,7 @@ if __name__ == "__main__":
 		config.save()
 	
 	paperSize = 5.5  # Paper size in inches
+	if args.smallscreen: paperSize = 3.5
 	imageMinMax = (0, 255)
 	plotSources = False
 	plotHa = False
