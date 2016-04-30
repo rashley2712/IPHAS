@@ -4,7 +4,7 @@ from astropy.vo.client.conesearch import conesearch
 from astropy.table import Table, vstack
 from astropy.utils import data
 
-import numpy, math, os
+import numpy, math, os, sys
 import generalUtils
 
 
@@ -44,9 +44,10 @@ class IPHASdataClass:
 		hdulist.close()
 		
 	def getVizierObjects(self):
+		""" Make a request to Vizier to get an Astropy Table of catalog object for this field. """
 		fullRadius = math.sqrt((self.width/2)**2 + (self.height/2)**2) * self.pixelScale
 		(ra, dec) = self.centre
-		radius = fullRadius
+		radius = fullRadius / 3600.
 		print(ra, dec, radius)
 		maglimit = 30
 	
@@ -59,6 +60,7 @@ class IPHASdataClass:
 			if os.path.exists(usnoCache):
 				usnoCached = True
 	
+		print conesearch.list_catalogs()
 		if usnoCached:
 			brightStarsTable = Table.read(usnoCache)
 		else:		
@@ -77,7 +79,55 @@ class IPHASdataClass:
 				print("Found %d bright stars in %f degree radius."%(len(brightStarsTable), radius))
 				brightStarsTable.write(usnoCache, format='fits', overwrite=True)
 				
-		
+		self.addBrightCatalog(brightStarsTable)
+	
+	def addBrightCatalog(self, catTable):
+		newCatalog = []
+		print "Available columns:", catTable.columns
+		for index, row in enumerate(catTable):
+			object={}
+			#object['name'] = IPHAS2name
+			object['ra'] = row['RAJ2000']
+			object['dec'] = row['DEJ2000']
+			object['R'] = row['Rmag']
+			object['B'] = row['Bmag']
+			#dr2Object['class'] = row['mergedClass']
+			#dr2Object['pStar'] = row['pStar']
+			#dr2Object['iClass'] = row['iClass']
+			#dr2Object['haClass'] = row['haClass']
+			#dr2Object['pixelFWHM'] = row['haSeeing'] / pixelScale
+			x, y = self.wcsSolution.all_world2pix([object['ra']], [object['dec']], 1)
+			object['x'] = x[0]
+			object['y'] = y[0]
+			newCatalog.append(object)
+			if  (index%100) == 0:
+				sys.stdout.write("\rCopying: %d of %d."%(index+1, len(catTable)))
+				sys.stdout.flush()
+		sys.stdout.write("\rCopying: %d of %d.\n"%(index+1, len(catTable)))
+		sys.stdout.flush()
+				
+	def addIPHASCatalog(self, catTable):
+		for index, row in enumerate(catTable):
+			IPHAS2name = row['IPHAS2']
+			dr2Object={}
+			dr2Object['name'] = IPHAS2name
+			dr2Object['ra'] = row['RAJ2000']
+			dr2Object['dec'] = row['DEJ2000']
+			dr2Object['class'] = row['mergedClass']
+			dr2Object['pStar'] = row['pStar']
+			dr2Object['iClass'] = row['iClass']
+			dr2Object['haClass'] = row['haClass']
+			dr2Object['pixelFWHM'] = row['haSeeing'] / pixelScale
+			x, y = wcsSolution.all_world2pix([dr2Object['ra']], [dr2Object['dec']], 1)
+			dr2Object['x'] = x[0]
+			dr2Object['y'] = y[0]
+			dr2Objects.append(dr2Object)
+			if  (index%100) == 0:
+				sys.stdout.write("\rCopying: %d of %d."%(index, len(dr2nearby)))
+				sys.stdout.flush()
+		sys.stdout.write("\n")
+		sys.stdout.flush()
+			
 		
 		
 	def getRADECmargins(self):

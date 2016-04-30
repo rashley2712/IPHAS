@@ -14,6 +14,7 @@ class commandClass(cmd.Cmd):
 	prompt = ''
 	
 	IPHASdata = IPHASdataClass.IPHASdataClass()
+	echo = False
 	
 	def precmd(self, line):
 		if len(line)==0: return line
@@ -28,7 +29,15 @@ class commandClass(cmd.Cmd):
 			print "Running the script:", scriptname
 			self.run_script(scriptname)
 			return "NOP"
+			
+		if self.echo: print "iphas> ", line
 		return line
+		
+	def do_echo(self, line):
+		""" Toggle the echo of commands (useful if you are running from a script)."""
+		if self.echo: self.echo=False
+		else: self.echo=True
+		return 
 	
 	def run_script(self, scriptname):
 		try:
