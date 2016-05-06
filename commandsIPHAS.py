@@ -16,6 +16,14 @@ class commandClass(cmd.Cmd):
 	IPHASdata = IPHASdataClass.IPHASdataClass()
 	echo = False
 	
+	def default(self, line):
+		command, arg, line = self.parseline(line)
+		func = [getattr(self, n) for n in self.get_names() if n.startswith('do_' + command)]
+		if func:
+			func[0](arg)
+		return 
+	
+	
 	def precmd(self, line):
 		if len(line)==0: return line
 		if line[0] == '#':
@@ -64,6 +72,22 @@ class commandClass(cmd.Cmd):
 		sys.exit()
 		return True
 		
+	def do_type(self, line):
+		""" type
+		Print out to the terminal the contents of an object.
+		The object could be a catalog downloaded from Vizier, etc. """
+		if line=="catalog":
+			self.IPHASdata.printCatalog()
+			
+		
+	def do_draw(self, line):
+		""" draw
+		Draw the image of the CCD """
+		self.IPHASdata.drawBitmap()
+		
+		return
+		
+		
 	def do_load(self, line):
 		""" load
 		Load a FITS file. """
@@ -85,6 +109,7 @@ class commandClass(cmd.Cmd):
 			print "Margins:", self.IPHASdata.getRADECmargins()
 			return
 		self.IPHASdata.getFITSHeader(line)
+		return
 	
 	def do_shell(self, line):
 		"Run a shell command"

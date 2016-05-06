@@ -1,23 +1,40 @@
 from astropy.io import fits
 from astropy.wcs import WCS
 from astropy.vo.client.conesearch import conesearch
+from astropy.vo.client.conesearch import list_catalogs
 from astropy.table import Table, vstack
 from astropy.utils import data
 
 import numpy, math, os, sys
 import generalUtils
 
+import matplotlib.pyplot
+
+
+Columns = {
+	'tycho': {
+		'ra': 'RAmdeg',
+		'dec': 'DEmdeg',
+		'B': 'BTmag',
+		'V': 'VTmag',
+		'R': -1, 
+		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
+		}
+}
 
 class IPHASdataClass:
 	def __init__(self):
 		print "Initiliasing an empty data class"
 		self.originalImageData = None
+		self.boostedImage = None
 		self.FITSHeaders = {}
 		self.filter = None
 		self.pixelScale = None
 		self.centre = None
 		self.filename = None
 		self.ignorecache = False
+		self.catalog = []
+		self.catalogName = 'tycho'
 		return None
 		
 	def loadFITSFile(self, filename):
@@ -53,44 +70,55 @@ class IPHASdataClass:
 	
 		# First look for a cached copy of this data
 		filenameParts = self.filename.split('.')
-		usnoCache = filenameParts[0] + "_usno_cache.fits"
-		usnoCached = False
+		catalogCache = filenameParts[0] + "_" + self.catalogName + "_cache.fits"
+		cached = False
 		if not self.ignorecache:
-			print("Looking for a cached copy of the USNO catalogue:", usnoCache)
-			if os.path.exists(usnoCache):
-				usnoCached = True
+			print "Looking for a cached copy of the catalogue:", catalogCache, 
+			if os.path.exists(catalogCache):
+				print "FOUND"
+				cached = True
+			else: print "NOT FOUND"
 	
-		print conesearch.list_catalogs()
-		if usnoCached:
-			brightStarsTable = Table.read(usnoCache)
+		"""print "Catalogs available:"
+		for i, c in enumerate(list_catalogs()):
+			print i, c"""
+			
+		if cached:
+			brightStarsTable = Table.read(catalogCache)
 		else:		
 			with data.conf.set_temp('remote_timeout', 60):
 				try: 
 					usno = 'The USNO-A2.0 Catalogue (Monet+ 1998) 1'
+					tychoURL = "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
 					search = conesearch(center=(ra, dec),
 	               		radius=radius,
 	                	verb=3,
 						cache=True, 
-	                	catalog_db=usno)
+	                	catalog_db=Columns[self.catalogName]['catalog_db'])
 				except: 
 					print("Failed to retrieve any results from Vizier.")
 					return None
 				brightStarsTable = search.to_table()
 				print("Found %d bright stars in %f degree radius."%(len(brightStarsTable), radius))
-				brightStarsTable.write(usnoCache, format='fits', overwrite=True)
+				brightStarsTable.write(catalogCache, format='fits', overwrite=True)
 				
 		self.addBrightCatalog(brightStarsTable)
+		
+	def printCatalog(self):
+		for b in self.catalog:
+			print b
+		print "%d rows printed."%len(self.catalog)
 	
 	def addBrightCatalog(self, catTable):
 		newCatalog = []
 		print "Available columns:", catTable.columns
+		columnMapper = Columns[self.catalogName]
 		for index, row in enumerate(catTable):
 			object={}
-			#object['name'] = IPHAS2name
-			object['ra'] = row['RAJ2000']
-			object['dec'] = row['DEJ2000']
-			object['R'] = row['Rmag']
-			object['B'] = row['Bmag']
+			object['ra'] = row[columnMapper['ra']]
+			object['dec'] = row[columnMapper['dec']]
+			object['B'] = row[columnMapper['B']]
+			object['V'] = row[columnMapper['V']]
 			#dr2Object['class'] = row['mergedClass']
 			#dr2Object['pStar'] = row['pStar']
 			#dr2Object['iClass'] = row['iClass']
@@ -105,6 +133,7 @@ class IPHASdataClass:
 				sys.stdout.flush()
 		sys.stdout.write("\rCopying: %d of %d.\n"%(index+1, len(catTable)))
 		sys.stdout.flush()
+		self.catalog = newCatalog
 				
 	def addIPHASCatalog(self, catTable):
 		for index, row in enumerate(catTable):
@@ -157,5 +186,25 @@ class IPHASdataClass:
 		except KeyError:
 			print "Could not find a header with the name:", key
 			return None 
+			
+	def drawBitmap(self):
+		if self.boostedImage is None:
+			print "Need to boost"
+			self.boostedImage = generalUtils.percentiles(self.originalImageData, 20, 99)
+		matplotlib.pyplot.ion()
+		fig = matplotlib.pyplot.gcf()
+		mplFrame = numpy.rot90(self.boostedImage)
+		# mplFrame = numpy.rot90(stackedImages[channel])
+		# mplFrame = numpy.flipud(mplFrame)
+		fig = matplotlib.pyplot.figure("Main", figsize=(10,10/1.618))
+		fig.frameon = False
+		axes = matplotlib.pyplot.gca()
+		axes.axis('off')
+		#windowTitle =  "[" + str(trueFrameNumber) + "] " + str(wholeFrame['MJD'])
+		#fig.canvas.set_window_title(windowTitle)
+		imgplot = matplotlib.pyplot.imshow(mplFrame, cmap="gray_r", interpolation='nearest')
+		matplotlib.pyplot.show()
+		matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
+		
 			
 			
