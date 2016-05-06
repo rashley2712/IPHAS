@@ -13,8 +13,8 @@ import matplotlib.pyplot
 
 Columns = {
 	'tycho': {
-		'ra': 'RAmdeg',
-		'dec': 'DEmdeg',
+		'ra': 'RA_ICRS_',
+		'dec': 'DE_ICRS_',
 		'B': 'BTmag',
 		'V': 'VTmag',
 		'R': -1, 
@@ -24,7 +24,7 @@ Columns = {
 
 class IPHASdataClass:
 	def __init__(self):
-		print "Initiliasing an empty data class"
+		print "Initialising an empty IPHAS data class"
 		self.originalImageData = None
 		self.boostedImage = None
 		self.FITSHeaders = {}
@@ -184,6 +184,10 @@ class IPHASdataClass:
 			print "Could not find a header with the name:", key
 			return None 
 			
+	def plotCatalog(self):
+		for object in self.catalog:
+			print object
+			
 	def drawBitmap(self):
 		if self.boostedImage is None:
 			print "Boosting the image"
@@ -198,11 +202,7 @@ class IPHASdataClass:
 		axes = matplotlib.pyplot.gca()
 		axes.set_axis_off()
 		fig.add_axes(axes)
-		# matplotlib.pyplot.tight_layout()
-		#windowTitle =  "[" + str(trueFrameNumber) + "] " + str(wholeFrame['MJD'])
-		#fig.canvas.set_window_title(windowTitle)
 		imgplot = matplotlib.pyplot.imshow(mplFrame, cmap="gray_r", interpolation='nearest')
-		# matplotlib.pyplot.show()
 		matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		
 			
