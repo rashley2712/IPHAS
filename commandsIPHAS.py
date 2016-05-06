@@ -24,8 +24,14 @@ class commandClass(cmd.Cmd):
 		return 
 	
 	def do_versions(self, line):
+		import sys
+		print "Sys: %s"%sys.version
 		import astropy
-		print "Astropy version %s"%(astropy.__version__)
+		print "Astropy: %s"%(astropy.__version__)
+		import numpy
+		print "Numpy: %s"%numpy.__version__
+		import matplotlib
+		print "Matplotlib: %s"%matplotlib.__version__
 		return
 	
 	def precmd(self, line):
