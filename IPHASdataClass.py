@@ -194,8 +194,11 @@ class IPHASdataClass:
 		# mplFrame = numpy.flipud(mplFrame)
 		fig = matplotlib.pyplot.figure("Main", figsize=(self.figSize, self.figSize/1.618))
 		fig.frameon = False
+		fig.set_tight_layout(True)
 		axes = matplotlib.pyplot.gca()
-		axes.axis('off')
+		axes.set_axis_off()
+		fig.add_axes(axes)
+		# matplotlib.pyplot.tight_layout()
 		#windowTitle =  "[" + str(trueFrameNumber) + "] " + str(wholeFrame['MJD'])
 		#fig.canvas.set_window_title(windowTitle)
 		imgplot = matplotlib.pyplot.imshow(mplFrame, cmap="gray_r", interpolation='nearest')

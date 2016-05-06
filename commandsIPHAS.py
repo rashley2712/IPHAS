@@ -32,6 +32,8 @@ class commandClass(cmd.Cmd):
 		print "Numpy: %s"%numpy.__version__
 		import matplotlib
 		print "Matplotlib: %s"%matplotlib.__version__
+		from PIL import Image,ImageDraw,ImageFont
+		print "Python Image Library (PIL): %s"%Image.VERSION
 		return
 	
 	def precmd(self, line):
