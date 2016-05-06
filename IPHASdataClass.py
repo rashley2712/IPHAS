@@ -35,6 +35,7 @@ class IPHASdataClass:
 		self.ignorecache = False
 		self.catalog = []
 		self.catalogName = 'tycho'
+		self.figSize = 12.
 		return None
 		
 	def loadFITSFile(self, filename):
@@ -192,18 +193,17 @@ class IPHASdataClass:
 			print "Need to boost"
 			self.boostedImage = generalUtils.percentiles(self.originalImageData, 20, 99)
 		matplotlib.pyplot.ion()
-		fig = matplotlib.pyplot.gcf()
 		mplFrame = numpy.rot90(self.boostedImage)
 		# mplFrame = numpy.rot90(stackedImages[channel])
 		# mplFrame = numpy.flipud(mplFrame)
-		fig = matplotlib.pyplot.figure("Main", figsize=(10,10/1.618))
+		fig = matplotlib.pyplot.figure("Main", figsize=(self.figSize, self.figSize/1.618))
 		fig.frameon = False
 		axes = matplotlib.pyplot.gca()
 		axes.axis('off')
 		#windowTitle =  "[" + str(trueFrameNumber) + "] " + str(wholeFrame['MJD'])
 		#fig.canvas.set_window_title(windowTitle)
 		imgplot = matplotlib.pyplot.imshow(mplFrame, cmap="gray_r", interpolation='nearest')
-		matplotlib.pyplot.show()
+		# matplotlib.pyplot.show()
 		matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		
 			
