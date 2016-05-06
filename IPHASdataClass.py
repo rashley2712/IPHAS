@@ -53,6 +53,7 @@ class IPHASdataClass:
 		self.height, self.width = numpy.shape(self.originalImageData)
 		self.wcsSolution = WCS(hdulist[1].header)
 		print "width, height", self.width, self.height
+		self.getRADECmargins()
 		imageCentre = (self.width/2, self.height/2)
 		ra, dec = self.wcsSolution.all_pix2world([imageCentre], 1)[0]
 		self.centre = (ra, dec)
