@@ -121,11 +121,6 @@ class IPHASdataClass:
 			object['dec'] = row[columnMapper['dec']]
 			object['B'] = row[columnMapper['B']]
 			object['V'] = row[columnMapper['V']]
-			#dr2Object['class'] = row['mergedClass']
-			#dr2Object['pStar'] = row['pStar']
-			#dr2Object['iClass'] = row['iClass']
-			#dr2Object['haClass'] = row['haClass']
-			#dr2Object['pixelFWHM'] = row['haSeeing'] / pixelScale
 			x, y = self.wcsSolution.all_world2pix([object['ra']], [object['dec']], 1)
 			object['x'] = x[0]
 			object['y'] = y[0]
@@ -191,7 +186,7 @@ class IPHASdataClass:
 			
 	def drawBitmap(self):
 		if self.boostedImage is None:
-			print "Need to boost"
+			print "Boosting the image"
 			self.boostedImage = generalUtils.percentiles(self.originalImageData, 20, 99)
 		matplotlib.pyplot.ion()
 		mplFrame = numpy.rot90(self.boostedImage)

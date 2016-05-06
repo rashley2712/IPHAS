@@ -23,6 +23,10 @@ class commandClass(cmd.Cmd):
 			func[0](arg)
 		return 
 	
+	def do_versions(self, line):
+		import astropy
+		print "Astropy version %s"%(astropy.__version__)
+		return
 	
 	def precmd(self, line):
 		if len(line)==0: return line
@@ -80,9 +84,18 @@ class commandClass(cmd.Cmd):
 			self.IPHASdata.printCatalog()
 			
 		
+	def do_plot(self, line):
+		""" plot
+		Plot a catalog over an existing image """
+		
+		self.IPHASdata.plotCatalog()
+		
+		return
+		
 	def do_draw(self, line):
 		""" draw
 		Draw the image of the CCD """
+		
 		self.IPHASdata.drawBitmap()
 		
 		return
