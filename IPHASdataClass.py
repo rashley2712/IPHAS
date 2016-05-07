@@ -20,6 +20,14 @@ Columns = {
 		'R': -1, 
 		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
 		}
+	'dr2': {
+		'ra': 'RAJ2000', 
+		'dec': 'DEJ2000',
+		'B': 'BTmag',
+		'V': 'VTmag',
+		'R': -1, 
+		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
+	}
 }
 
 class IPHASdataClass:
@@ -105,6 +113,7 @@ class IPHASdataClass:
 				brightStarsTable.write(catalogCache, format='fits', overwrite=True)
 				
 		self.addBrightCatalog(brightStarsTable)
+		self.getRADECmargins()
 		
 	def printCatalog(self):
 		for b in self.catalog:
@@ -153,9 +162,7 @@ class IPHASdataClass:
 				sys.stdout.flush()
 		sys.stdout.write("\n")
 		sys.stdout.flush()
-			
-		
-		
+				
 	def getRADECmargins(self):
 		margins = self.wcsSolution.all_pix2world([[0, 0], [self.width, self.height]], 1)
 		if margins[0][0] < margins[1][0]:
@@ -185,23 +192,34 @@ class IPHASdataClass:
 			return None 
 			
 	def plotCatalog(self):
-		for object in self.catalog:
-			print object
+		try:
+			fig = self.figure
+			for object in self.catalog:
+				x = object['x'] 
+				y = self.height - object['y'] 
+				radius = 40
+				fig.gca().add_artist(matplotlib.pyplot.Circle((x,y), radius, color='green', fill=False, linewidth=2.0))
+			matplotlib.pyplot.draw()
+		except AttributeError:
+			print "There is no drawing surface defined yet. Please use the 'draw' command first."
+		except Exception as e:
+			print e
+			
 			
 	def drawBitmap(self):
 		if self.boostedImage is None:
 			print "Boosting the image"
 			self.boostedImage = generalUtils.percentiles(self.originalImageData, 20, 99)
 		matplotlib.pyplot.ion()
-		mplFrame = numpy.rot90(self.boostedImage)
-		# mplFrame = numpy.rot90(stackedImages[channel])
-		# mplFrame = numpy.flipud(mplFrame)
-		fig = matplotlib.pyplot.figure("Main", figsize=(self.figSize, self.figSize/1.618))
-		fig.frameon = False
-		fig.set_tight_layout(True)
+		# mplFrame = numpy.rot90(self.boostedImage)
+		mplFrame = self.boostedImage
+		mplFrame = numpy.flipud(mplFrame)
+		self.figure = matplotlib.pyplot.figure(self.filename, figsize=(self.figSize/1.618, self.figSize))
+		self.figure.frameon = False
+		self.figure.set_tight_layout(True)
 		axes = matplotlib.pyplot.gca()
 		axes.set_axis_off()
-		fig.add_axes(axes)
+		self.figure.add_axes(axes)
 		imgplot = matplotlib.pyplot.imshow(mplFrame, cmap="gray_r", interpolation='nearest')
 		matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		
