@@ -19,7 +19,7 @@ Columns = {
 		'V': 'VTmag',
 		'R': -1, 
 		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
-		}
+		}, 
 	'dr2': {
 		'ra': 'RAJ2000', 
 		'dec': 'DEJ2000',
