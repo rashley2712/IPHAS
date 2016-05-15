@@ -142,8 +142,10 @@ class commandClass(cmd.Cmd):
 	def do_get(self, line):
 		""" Get an additional object for the image. 
 		eg get cat : Get a catalogue of sources from Vizier."""
-		print "Getting catalogue..."
-		self.IPHASdata.getVizierObjects()
+		catalogName = line.split()[0]
+		print "Getting ", catalogName
+		self.IPHASdata.getVizierObjects(catalogName)
+		
 		return
 		
 	def emptyline(self):

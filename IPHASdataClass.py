@@ -11,22 +11,25 @@ import generalUtils
 import matplotlib.pyplot
 
 
-Columns = {
+catalogMetadata = {
 	'tycho': {
-		'ra': 'RA_ICRS_',
-		'dec': 'DE_ICRS_',
-		'B': 'BTmag',
-		'V': 'VTmag',
-		'R': -1, 
+		'columns': {
+			'ra': 'RA_ICRS_',
+			'dec': 'DE_ICRS_',
+			'B': 'BTmag',
+			'V': 'VTmag',
+			'mag': 'VTmag' },
 		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
 		}, 
 	'dr2': {
-		'ra': 'RAJ2000', 
-		'dec': 'DEJ2000',
-		'B': 'BTmag',
-		'V': 'VTmag',
-		'R': -1, 
-		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
+		'columns': {
+			'ra': 'RAJ2000', 
+			'dec': 'DEJ2000',
+			'i': 'i',
+			'r': 'r',
+			'H': 'ha',
+			'mag': 'ha' },
+		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=IPHAS2&-out.all&"
 	}
 }
 
@@ -69,8 +72,9 @@ class IPHASdataClass:
 		print "RA, DEC of image centre is: ", positionString, ra, dec
 		
 		hdulist.close()
+	
 		
-	def getVizierObjects(self):
+	def getVizierObjects(self, catalogName):
 		""" Make a request to Vizier to get an Astropy Table of catalog object for this field. """
 		fullRadius = math.sqrt((self.width/2)**2 + (self.height/2)**2) * self.pixelScale
 		(ra, dec) = self.centre
@@ -78,9 +82,14 @@ class IPHASdataClass:
 		print(ra, dec, radius)
 		maglimit = 30
 	
+		availableCatalogs = catalogMetadata.keys()
+		if catalogName not in availableCatalogs:
+			print "The definitions for this catalogue are unknown. Available catalogues are:", availableCatalogs
+			return
+		
 		# First look for a cached copy of this data
 		filenameParts = self.filename.split('.')
-		catalogCache = filenameParts[0] + "_" + self.catalogName + "_cache.fits"
+		catalogCache = filenameParts[0] + "_" + catalogName + "_cache.fits"
 		cached = False
 		if not self.ignorecache:
 			print "Looking for a cached copy of the catalogue:", catalogCache, 
@@ -89,22 +98,16 @@ class IPHASdataClass:
 				cached = True
 			else: print "NOT FOUND"
 	
-		"""print "Catalogs available:"
-		for i, c in enumerate(list_catalogs()):
-			print i, c"""
-			
 		if cached:
 			brightStarsTable = Table.read(catalogCache)
 		else:		
 			with data.conf.set_temp('remote_timeout', 60):
 				try: 
-					usno = 'The USNO-A2.0 Catalogue (Monet+ 1998) 1'
-					tychoURL = "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
 					search = conesearch(center=(ra, dec),
 	               		radius=radius,
 	                	verb=3,
 						cache=True, 
-	                	catalog_db=Columns[self.catalogName]['catalog_db'])
+	                	catalog_db=catalogMetadata[catalogName]['catalog_db'])
 				except: 
 					print("Failed to retrieve any results from Vizier.")
 					return None
@@ -112,7 +115,7 @@ class IPHASdataClass:
 				print("Found %d bright stars in %f degree radius."%(len(brightStarsTable), radius))
 				brightStarsTable.write(catalogCache, format='fits', overwrite=True)
 				
-		self.addBrightCatalog(brightStarsTable)
+		self.addBrightCatalog(brightStarsTable, catalogName)
 		self.getRADECmargins()
 		
 	def printCatalog(self):
@@ -120,16 +123,13 @@ class IPHASdataClass:
 			print b
 		print "%d rows printed."%len(self.catalog)
 	
-	def addBrightCatalog(self, catTable):
+	def addBrightCatalog(self, catTable, catalogName):
 		newCatalog = []
-		print "Available columns:", catTable.columns
-		columnMapper = Columns[self.catalogName]
+		columnMapper = catalogMetadata[catalogName]['columns']
 		for index, row in enumerate(catTable):
 			object={}
-			object['ra'] = row[columnMapper['ra']]
-			object['dec'] = row[columnMapper['dec']]
-			object['B'] = row[columnMapper['B']]
-			object['V'] = row[columnMapper['V']]
+			for key in columnMapper.keys():
+				object[key] = row[columnMapper[key]]
 			x, y = self.wcsSolution.all_world2pix([object['ra']], [object['dec']], 1)
 			object['x'] = x[0]
 			object['y'] = y[0]
@@ -197,9 +197,10 @@ class IPHASdataClass:
 			for object in self.catalog:
 				x = object['x'] 
 				y = self.height - object['y'] 
-				radius = 40
-				fig.gca().add_artist(matplotlib.pyplot.Circle((x,y), radius, color='green', fill=False, linewidth=2.0))
+				radius = 10
+				fig.gca().add_artist(matplotlib.pyplot.Circle((x,y), radius, color='green', fill=False, linewidth=1.0))
 			matplotlib.pyplot.draw()
+			matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		except AttributeError:
 			print "There is no drawing surface defined yet. Please use the 'draw' command first."
 		except Exception as e:
