@@ -91,15 +91,15 @@ class commandClass(cmd.Cmd):
 		""" type
 		Print out to the terminal the contents of an object.
 		The object could be a catalog downloaded from Vizier, etc. """
-		if line=="catalog":
-			self.IPHASdata.printCatalog()
+		
+		self.IPHASdata.printCatalog(line)
 			
 		
 	def do_plot(self, line):
 		""" plot
 		Plot a catalog over an existing image """
 		
-		self.IPHASdata.plotCatalog()
+		self.IPHASdata.plotCatalog(line)
 		
 		return
 		
@@ -164,7 +164,7 @@ class commandClass(cmd.Cmd):
 			return
 		propertyToSet = params[0]
 		value = params[1]
-		self.IPHASdata.__dict__[propertyToSet] = value
+		self.IPHASdata.setProperty(propertyToSet, value)
 		return
 		
 		

@@ -10,6 +10,73 @@ import generalUtils
 import astroquery
 import matplotlib.pyplot
 
+def circles(x, y, s, c='b', vmin=None, vmax=None, **kwargs):
+    """
+    Make a scatter of circles plot of x vs y, where x and y are sequence 
+    like objects of the same lengths. The size of circles are in data scale.
+
+    Parameters
+    ----------
+    x,y : scalar or array_like, shape (n, )
+        Input data
+    s : scalar or array_like, shape (n, ) 
+        Radius of circle in data unit.
+    c : color or sequence of color, optional, default : 'b'
+        `c` can be a single color format string, or a sequence of color
+        specifications of length `N`, or a sequence of `N` numbers to be
+        mapped to colors using the `cmap` and `norm` specified via kwargs.
+        Note that `c` should not be a single numeric RGB or RGBA sequence 
+        because that is indistinguishable from an array of values
+        to be colormapped. (If you insist, use `color` instead.)  
+        `c` can be a 2-D array in which the rows are RGB or RGBA, however. 
+    vmin, vmax : scalar, optional, default: None
+        `vmin` and `vmax` are used in conjunction with `norm` to normalize
+        luminance data.  If either are `None`, the min and max of the
+        color array is used.
+    kwargs : `~matplotlib.collections.Collection` properties
+        Eg. alpha, edgecolor(ec), facecolor(fc), linewidth(lw), linestyle(ls), 
+        norm, cmap, transform, etc.
+
+    Returns
+    -------
+    paths : `~matplotlib.collections.PathCollection`
+
+    Examples
+    --------
+    a = np.arange(11)
+    circles(a, a, a*0.2, c=a, alpha=0.5, edgecolor='none')
+    plt.colorbar()
+
+    License
+    --------
+    This code is under [The BSD 3-Clause License]
+    (http://opensource.org/licenses/BSD-3-Clause)
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Circle
+    from matplotlib.collections import PatchCollection
+
+    if np.isscalar(c):
+        kwargs.setdefault('color', c)
+        c = None
+    if 'fc' in kwargs: kwargs.setdefault('facecolor', kwargs.pop('fc'))
+    if 'ec' in kwargs: kwargs.setdefault('edgecolor', kwargs.pop('ec'))
+    if 'ls' in kwargs: kwargs.setdefault('linestyle', kwargs.pop('ls'))
+    if 'lw' in kwargs: kwargs.setdefault('linewidth', kwargs.pop('lw'))
+
+    patches = [Circle((x_, y_), s_, fill=False, linewidth=1) for x_, y_, s_ in np.broadcast(x, y, s)]
+    collection = PatchCollection(patches, **kwargs)
+    if c is not None:
+        collection.set_array(np.asarray(c))
+        collection.set_clim(vmin, vmax)
+
+    ax = plt.gca()
+    ax.add_collection(collection)
+    # ax.autoscale_view()
+    if c is not None:
+        plt.sci(collection)
+    return collection
 
 catalogMetadata = {
 	'tycho': {
@@ -31,7 +98,7 @@ catalogMetadata = {
 			'i': 'i',
 			'r': 'r',
 			'H': 'ha',
-			'mag': 'ha',
+			'mag': 'r',
 		    'class': 'mergedClass',
 			'pStar': 'pStar', 
 		    'iclass': 'iClass', 
@@ -55,15 +122,23 @@ class IPHASdataClass:
 		self.centre = None
 		self.filename = None
 		self.ignorecache = False
-		self.catalog = []
+		self.catalogs = {}
 		self.figSize = 12.
 		self.magLimit = 18
 		return None
 		
 	def setProperty(self, property, value):
-		if property=='magLimit':
-			self.__dict__[property] = float(value)
-		if property==''
+		truths = ["true", "yes", "on", "1", "Y", "y", "True"]
+		falses = ["false", "no", "off", "0", "N", "n", "False"]
+		if property=='maglimit':
+			self.__dict__['magLimit'] = float(value)
+		if property=="ignorecache":
+			if value in truths:
+				self.ignorecache = True
+			if value in falses:
+				self.ignorecache = False
+			
+			
 		
 	def loadFITSFile(self, filename):
 		hdulist = fits.open(filename)
@@ -124,7 +199,7 @@ class IPHASdataClass:
 		if cached:
 			newCatalog = Table.read(catalogCache)
 		else:			
-			print "Going online to fetch %s results from Vizier."%catalogName
+			print "Going online to fetch %s results from Vizier with mag limit %f."%(catalogName, self.magLimit)
 			from astroquery.vizier import Vizier
 			Vizier.ROW_LIMIT = 1E5
 			Vizier.column_filters={"r":"<%d"%self.magLimit}
@@ -134,9 +209,11 @@ class IPHASdataClass:
 			skyHeight= coordinates.Angle(self.raRange, unit = u.deg)
 			skyWidth = coordinates.Angle(self.decRange, unit = u.deg)
 			print "Sky width, height:", skyWidth, skyHeight
-			result = Vizier.query_region(coordinates = c, width = skyWidth, height = skyHeight, catalog = catalogMetadata[catalogName]['VizierLookup'])
+			result = Vizier.query_region(coordinates = c, width = skyWidth, height = skyHeight, catalog = catalogMetadata[catalogName]['VizierLookup'], verbose=True)
 			newCatalog = result[catalogMetadata[catalogName]['VizierName']]
 			newCatalog.pprint()
+			
+			# Write the new catalog to the cache file
 			newCatalog.write(catalogCache, format='fits', overwrite=True)
 		
 		self.addCatalog(newCatalog, catalogName)
@@ -144,18 +221,22 @@ class IPHASdataClass:
 		return
 		
 		
-	def printCatalog(self):
-		for b in self.catalog:
+	def printCatalog(self, catalogName):
+		catalog = self.catalogs[catalogName]
+		for b in catalog:
 			print b
-		print "%d rows printed."%len(self.catalog)
+		print "%d rows printed."%len(catalog)
 	
 	def addCatalog(self, catTable, catalogName):
 		newCatalog = []
 		columnMapper = catalogMetadata[catalogName]['columns']
 		for index, row in enumerate(catTable):
 			object={}
+			skipRow = False
 			for key in columnMapper.keys():
 				object[key] = row[columnMapper[key]]
+				if numpy.isnan(row[columnMapper[key]]): skipRow = True
+			if skipRow: continue		
 			x, y = self.wcsSolution.all_world2pix([object['ra']], [object['dec']], 1)
 			object['x'] = x[0]
 			object['y'] = y[0]
@@ -165,29 +246,10 @@ class IPHASdataClass:
 				sys.stdout.flush()
 		sys.stdout.write("\rCopying: %d of %d.\n"%(index+1, len(catTable)))
 		sys.stdout.flush()
-		self.catalog = newCatalog
-				
-	def addIPHASCatalog(self, catTable):
-		for index, row in enumerate(catTable):
-			IPHAS2name = row['IPHAS2']
-			dr2Object={}
-			dr2Object['name'] = IPHAS2name
-			dr2Object['ra'] = row['RAJ2000']
-			dr2Object['dec'] = row['DEJ2000']
-			dr2Object['class'] = row['mergedClass']
-			dr2Object['pStar'] = row['pStar']
-			dr2Object['iClass'] = row['iClass']
-			dr2Object['haClass'] = row['haClass']
-			dr2Object['pixelFWHM'] = row['haSeeing'] / pixelScale
-			x, y = wcsSolution.all_world2pix([dr2Object['ra']], [dr2Object['dec']], 1)
-			dr2Object['x'] = x[0]
-			dr2Object['y'] = y[0]
-			dr2Objects.append(dr2Object)
-			if  (index%100) == 0:
-				sys.stdout.write("\rCopying: %d of %d."%(index, len(dr2nearby)))
-				sys.stdout.flush()
-		sys.stdout.write("\n")
-		sys.stdout.flush()
+		
+		print "Adding catalog %s to list of stored catalogs."%catalogName
+		self.catalogs[catalogName] =  newCatalog
+		return
 				
 	def getRADECmargins(self):
 		margins = self.wcsSolution.all_pix2world([[0, 0], [self.width, self.height]], 1)
@@ -228,23 +290,31 @@ class IPHASdataClass:
 			print "Could not find a header with the name:", key
 			return None 
 			
-	def plotCatalog(self):
+	def plotCatalog(self, catalogName):
+		catalog = self.catalogs[catalogName]
 		try:
 			fig = self.figure
-			for index, object in enumerate(self.catalog):
-				x = object['x'] 
-				y = self.height - object['y'] 
-				radius = 10
-				fig.gca().add_artist(matplotlib.pyplot.Circle((x,y), radius, color='green', fill=False, linewidth=1.0))
-				if  (index%100) == 0:
-						sys.stdout.write("\rPlotting: %d of %d."%(index+1, len(self.catalog)))
-						sys.stdout.flush()
-			sys.stdout.write("\rPlotting: %d of %d.\n"%(index+1, len(self.catalog)))
-			sys.stdout.flush()
+			xArray = [o['x'] for o in catalog]
+			yArray = [self.height - o['y'] for o in catalog]
+			rArray = []
+			for o in catalog:
+				r = 4192./(o['mag']**2) + 50.0/o['mag'] + 10
+				print o['mag'], r
+				rArray.append(r)
+			
+			# Nick Wright 
+			# R / pixels = 8192/M^2 + 1000/M + 100 
+			
+			patches = [matplotlib.pyplot.Circle((x_, y_), s_, fill=False, linewidth=1) for x_, y_, s_ in numpy.broadcast(xArray, yArray, rArray)]
+			collection = matplotlib.collections.PatchCollection(patches, alpha = 0.25)
+			ax = matplotlib.pyplot.gca()
+			ax.add_collection(collection)
+			matplotlib.pyplot.draw()
 			matplotlib.pyplot.show()
-			matplotlib.pyplot.savefig("test.png", bbox_inches='tight')
-		except AttributeError:
+			# matplotlib.pyplot.savefig("test.png", bbox_inches='tight')
+		except AttributeError as e:
 			print "There is no drawing surface defined yet. Please use the 'draw' command first."
+			print e
 		except Exception as e:
 			print e
 			
@@ -264,7 +334,7 @@ class IPHASdataClass:
 		axes.set_axis_off()
 		self.figure.add_axes(axes)
 		imgplot = matplotlib.pyplot.imshow(mplFrame, cmap="gray_r", interpolation='nearest')
-		matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
+		# matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		
 			
 			
