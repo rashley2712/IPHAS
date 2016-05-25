@@ -34,6 +34,9 @@ class commandClass(cmd.Cmd):
 		print "Matplotlib: %s"%matplotlib.__version__
 		from PIL import Image,ImageDraw,ImageFont
 		print "Python Image Library (PIL): %s"%Image.VERSION
+		import astroquery
+		print "Astroquery: %s"%astroquery.__version__
+		
 		return
 	
 	def precmd(self, line):
@@ -129,6 +132,9 @@ class commandClass(cmd.Cmd):
 		if line=="margins":
 			print "Margins:", self.IPHASdata.getRADECmargins()
 			return
+		if line=="catalogs":
+			self.IPHASdata.showVizierCatalogs()
+			return
 		self.IPHASdata.getFITSHeader(line)
 		return
 	
@@ -147,6 +153,20 @@ class commandClass(cmd.Cmd):
 		self.IPHASdata.getVizierObjects(catalogName)
 		
 		return
+		
+	def do_set(self, line):
+		""" set
+		Set a property of the IPHAS object."""
+		# print self.IPHASdata.__dict__
+		params = line.split()
+		if len(params)< 2:
+			print "Usage 'set [property] [value]'"
+			return
+		propertyToSet = params[0]
+		value = params[1]
+		self.IPHASdata.__dict__[propertyToSet] = value
+		return
+		
 		
 	def emptyline(self):
 		return

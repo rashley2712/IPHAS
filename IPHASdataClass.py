@@ -7,7 +7,7 @@ from astropy.utils import data
 
 import numpy, math, os, sys
 import generalUtils
-
+import astroquery
 import matplotlib.pyplot
 
 
@@ -19,7 +19,10 @@ catalogMetadata = {
 			'B': 'BTmag',
 			'V': 'VTmag',
 			'mag': 'VTmag' },
-		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&"
+		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=I/259/tyc2&-out.all&",
+		'colour': 'blue',
+		'VizierName': 'I/259/tyc2',
+		'VizierLookup': 'tycho'
 		}, 
 	'dr2': {
 		'columns': {
@@ -28,8 +31,16 @@ catalogMetadata = {
 			'i': 'i',
 			'r': 'r',
 			'H': 'ha',
-			'mag': 'ha' },
-		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=IPHAS2&-out.all&"
+			'mag': 'ha',
+		    'class': 'mergedClass',
+			'pStar': 'pStar', 
+		    'iclass': 'iClass', 
+		    'haClass': 'haClass',
+		    'pixelFWHM': 'haSeeing'},
+		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=IPHAS2&-out.all&",
+		'VizierLookup': 'DR2',
+		'VizierName': 'II/321/iphas2',
+		'color': 'green'
 	}
 }
 
@@ -45,9 +56,14 @@ class IPHASdataClass:
 		self.filename = None
 		self.ignorecache = False
 		self.catalog = []
-		self.catalogName = 'tycho'
 		self.figSize = 12.
+		self.magLimit = 18
 		return None
+		
+	def setProperty(self, property, value):
+		if property=='magLimit':
+			self.__dict__[property] = float(value)
+		if property==''
 		
 	def loadFITSFile(self, filename):
 		hdulist = fits.open(filename)
@@ -72,16 +88,23 @@ class IPHASdataClass:
 		print "RA, DEC of image centre is: ", positionString, ra, dec
 		
 		hdulist.close()
-	
+		
+	def showVizierCatalogs(self):
+		(ra, dec) = self.centre
+		from astroquery.vizier import Vizier
+		Vizier.ROW_LIMIT = 50
+		from astropy import coordinates
+		from astropy import units as u
+		c = coordinates.SkyCoord(ra,dec,unit=('deg','deg'),frame='icrs')
+		skyHeight= coordinates.Angle(self.raRange, unit = u.deg)
+		results = Vizier.query_region(coordinates = c, radius= 1.0 * u.deg)
+		print results
+		
 		
 	def getVizierObjects(self, catalogName):
 		""" Make a request to Vizier to get an Astropy Table of catalog object for this field. """
-		fullRadius = math.sqrt((self.width/2)**2 + (self.height/2)**2) * self.pixelScale
 		(ra, dec) = self.centre
-		radius = fullRadius / 3600.
-		print(ra, dec, radius)
-		maglimit = 30
-	
+		
 		availableCatalogs = catalogMetadata.keys()
 		if catalogName not in availableCatalogs:
 			print "The definitions for this catalogue are unknown. Available catalogues are:", availableCatalogs
@@ -99,31 +122,34 @@ class IPHASdataClass:
 			else: print "NOT FOUND"
 	
 		if cached:
-			brightStarsTable = Table.read(catalogCache)
-		else:		
-			with data.conf.set_temp('remote_timeout', 60):
-				try: 
-					search = conesearch(center=(ra, dec),
-	               		radius=radius,
-	                	verb=3,
-						cache=True, 
-	                	catalog_db=catalogMetadata[catalogName]['catalog_db'])
-				except: 
-					print("Failed to retrieve any results from Vizier.")
-					return None
-				brightStarsTable = search.to_table()
-				print("Found %d bright stars in %f degree radius."%(len(brightStarsTable), radius))
-				brightStarsTable.write(catalogCache, format='fits', overwrite=True)
-				
-		self.addBrightCatalog(brightStarsTable, catalogName)
-		self.getRADECmargins()
+			newCatalog = Table.read(catalogCache)
+		else:			
+			print "Going online to fetch %s results from Vizier."%catalogName
+			from astroquery.vizier import Vizier
+			Vizier.ROW_LIMIT = 1E5
+			Vizier.column_filters={"r":"<%d"%self.magLimit}
+			from astropy import coordinates
+			from astropy import units as u
+			c = coordinates.SkyCoord(ra,dec,unit=('deg','deg'),frame='icrs')
+			skyHeight= coordinates.Angle(self.raRange, unit = u.deg)
+			skyWidth = coordinates.Angle(self.decRange, unit = u.deg)
+			print "Sky width, height:", skyWidth, skyHeight
+			result = Vizier.query_region(coordinates = c, width = skyWidth, height = skyHeight, catalog = catalogMetadata[catalogName]['VizierLookup'])
+			newCatalog = result[catalogMetadata[catalogName]['VizierName']]
+			newCatalog.pprint()
+			newCatalog.write(catalogCache, format='fits', overwrite=True)
+		
+		self.addCatalog(newCatalog, catalogName)
+		
+		return
+		
 		
 	def printCatalog(self):
 		for b in self.catalog:
 			print b
 		print "%d rows printed."%len(self.catalog)
 	
-	def addBrightCatalog(self, catTable, catalogName):
+	def addCatalog(self, catTable, catalogName):
 		newCatalog = []
 		columnMapper = catalogMetadata[catalogName]['columns']
 		for index, row in enumerate(catTable):
@@ -165,15 +191,26 @@ class IPHASdataClass:
 				
 	def getRADECmargins(self):
 		margins = self.wcsSolution.all_pix2world([[0, 0], [self.width, self.height]], 1)
-		if margins[0][0] < margins[1][0]:
+		print "Margins:", margins
+		if margins[0][0] > margins[1][0]:
 			temp = margins[0][0]
 			margins[0][0] = margins[1][0]
 			margins[1][0] = temp
-		if margins[0][1] < margins[1][1]:
+		if margins[0][1] > margins[1][1]:
 			temp = margins[0][1]
 			margins[0][1] = margins[1][1]
 			margins[1][1] = temp
-		self.pixelScale = (abs(margins[0][0] - margins[1][0]) / self.height) * 3600.
+		print "Repaired margins:", margins
+		raRange = abs(margins[0][0] - margins[1][0])
+		decRange = abs(margins[0][1] - margins[1][1])
+		print "RA range, DEC range", raRange, decRange, raRange*60, decRange*60
+		longRange = raRange
+		if decRange>longRange: longRange = decRange
+		self.pixelScale = (longRange / self.height) * 3600.
+		self.raRange = raRange
+		self.decRange = decRange
+		print "Pixel scale: %6.4f \"/pixel"%self.pixelScale
+		
 		return margins
 		
 	def showFITSHeaders(self):
@@ -194,13 +231,18 @@ class IPHASdataClass:
 	def plotCatalog(self):
 		try:
 			fig = self.figure
-			for object in self.catalog:
+			for index, object in enumerate(self.catalog):
 				x = object['x'] 
 				y = self.height - object['y'] 
 				radius = 10
 				fig.gca().add_artist(matplotlib.pyplot.Circle((x,y), radius, color='green', fill=False, linewidth=1.0))
-			matplotlib.pyplot.draw()
-			matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
+				if  (index%100) == 0:
+						sys.stdout.write("\rPlotting: %d of %d."%(index+1, len(self.catalog)))
+						sys.stdout.flush()
+			sys.stdout.write("\rPlotting: %d of %d.\n"%(index+1, len(self.catalog)))
+			sys.stdout.flush()
+			matplotlib.pyplot.show()
+			matplotlib.pyplot.savefig("test.png", bbox_inches='tight')
 		except AttributeError:
 			print "There is no drawing surface defined yet. Please use the 'draw' command first."
 		except Exception as e:
