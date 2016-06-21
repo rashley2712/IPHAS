@@ -267,8 +267,8 @@ class IPHASdataClass:
 				# Check that the catalog has a class flag
 				if 'class' in o.keys():
 					if o['class'] != -1: continue   # Skip objects that are not stars  
-				xArray.append(o['x'])
-				yArray.append(self.height - o['y'])
+				xArray.append(o['x'] - 1)
+				yArray.append(self.height - 1 - o['y'] )
 				if catalogName=='dr2':
 					r = o['pixelFWHM']*8.
 				else:
