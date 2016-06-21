@@ -9,7 +9,7 @@ def percentiles(data, lo, hi):
     pHi = numpy.percentile(dataArray, hi)
     pLo = numpy.percentile(dataArray, lo)
     range = pHi - pLo
-    scale = range/255
+    scale = range/255.
     data = numpy.clip(data, pLo, pHi)
     data-= pLo
     data/=scale

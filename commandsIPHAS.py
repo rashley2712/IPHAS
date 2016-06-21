@@ -167,6 +167,13 @@ class commandClass(cmd.Cmd):
 		self.IPHASdata.setProperty(propertyToSet, value)
 		return
 		
+	def do_mask(self, line):
+		self.IPHASdata.maskCatalog(line)
+		return
+		
+	def do_cats(self, line):
+		self.IPHASdata.showVizierCatalogs()
+		return
 		
 	def emptyline(self):
 		return

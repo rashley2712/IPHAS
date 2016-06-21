@@ -4,12 +4,15 @@ from astropy.vo.client.conesearch import conesearch
 from astropy.vo.client.conesearch import list_catalogs
 from astropy.table import Table, vstack
 from astropy.utils import data
+from matplotlib.path import Path
 
 import numpy, math, os, sys
 import generalUtils
 import astroquery
 import matplotlib.pyplot
 
+def distance(p1, p2):
+	return math.sqrt( (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2 )
 
 catalogMetadata = {
 	'tycho': {
@@ -24,6 +27,17 @@ catalogMetadata = {
 		'VizierName': 'I/259/tyc2',
 		'VizierLookup': 'tycho'
 		}, 
+	'usno': {
+		'columns': {
+					'ra': 'RAJ2000',
+					'dec': 'DEJ2000',
+					'B': 'Bmag',
+					'R': 'Rmag',
+					'mag': 'Rmag' },
+				'colour': 'blue',
+				'VizierName': 'I/252/out',
+				'VizierLookup': 'usno'
+			},
 	'dr2': {
 		'columns': {
 			'ra': 'RAJ2000', 
@@ -40,7 +54,7 @@ catalogMetadata = {
 		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=IPHAS2&-out.all&",
 		'VizierLookup': 'DR2',
 		'VizierName': 'II/321/iphas2',
-		'color': 'green'
+		'colour': 'green'
 	}
 }
 
@@ -58,6 +72,7 @@ class IPHASdataClass:
 		self.catalogs = {}
 		self.figSize = 12.
 		self.magLimit = 18
+		self.mask = None
 		return None
 		
 	def setProperty(self, property, value):
@@ -87,7 +102,7 @@ class IPHASdataClass:
 		self.originalImageData =  hdulist[1].data
 		self.height, self.width = numpy.shape(self.originalImageData)
 		self.wcsSolution = WCS(hdulist[1].header)
-		print "width, height", self.width, self.height
+		print "width, height", self.width, self.height, "shape:", numpy.shape(self.originalImageData)
 		self.getRADECmargins()
 		imageCentre = (self.width/2, self.height/2)
 		ra, dec = self.wcsSolution.all_pix2world([imageCentre], 1)[0]
@@ -174,7 +189,7 @@ class IPHASdataClass:
 			object['x'] = x[0]
 			object['y'] = y[0]
 			newCatalog.append(object)
-			if  (index%100) == 0:
+			if  ((index+1)%100) == 0:
 				sys.stdout.write("\rCopying: %d of %d."%(index+1, len(catTable)))
 				sys.stdout.flush()
 		sys.stdout.write("\rCopying: %d of %d.\n"%(index+1, len(catTable)))
@@ -185,28 +200,28 @@ class IPHASdataClass:
 		return
 				
 	def getRADECmargins(self):
-		margins = self.wcsSolution.all_pix2world([[0, 0], [self.width, self.height]], 1)
-		print "Margins:", margins
-		if margins[0][0] > margins[1][0]:
-			temp = margins[0][0]
-			margins[0][0] = margins[1][0]
-			margins[1][0] = temp
-		if margins[0][1] > margins[1][1]:
-			temp = margins[0][1]
-			margins[0][1] = margins[1][1]
-			margins[1][1] = temp
-		print "Repaired margins:", margins
-		raRange = abs(margins[0][0] - margins[1][0])
-		decRange = abs(margins[0][1] - margins[1][1])
+		boundingBox = self.wcsSolution.all_pix2world([[0, 0], [0, self.width], [self.height, self.width], [self.height, 0]], 1, ra_dec_order = True)
+		# boundingBox = self.wcsSolution.all_pix2world([[0, 0], [0, self.height], [self.width, self.height], [self.width, 0]], 1, ra_dec_order = True)
+		print "Bounding box:", boundingBox
+		pixelDiagonal = math.sqrt(self.height**2 + self.width**2)
+		pixel1 = boundingBox[0]
+		pixel2 = boundingBox[2]
+		skyDiagonal = distance(pixel1, pixel2)
+		print "Diagonal size:", pixelDiagonal, skyDiagonal
+		self.pixelScale = (skyDiagonal / pixelDiagonal) * 3600.
+		print "Pixel scale: %3.2f \"/pixel"%self.pixelScale
+		raMin = numpy.min([r[0] for r in boundingBox])
+		raMax = numpy.max([r[0] for r in boundingBox])
+		decMin = numpy.min([r[1] for r in boundingBox])
+		decMax = numpy.max([r[1] for r in boundingBox])
+		print "RA, DEC min/max:", raMin, raMax, decMin, decMax
+		raRange = raMax - raMin
+		decRange = decMax - decMin
 		print "RA range, DEC range", raRange, decRange, raRange*60, decRange*60
-		longRange = raRange
-		if decRange>longRange: longRange = decRange
-		self.pixelScale = (longRange / self.height) * 3600.
 		self.raRange = raRange
 		self.decRange = decRange
 		print "Pixel scale: %6.4f \"/pixel"%self.pixelScale
-		
-		return margins
+		self.boundingBox = boundingBox
 		
 	def showFITSHeaders(self):
 		headersString = ""
@@ -225,21 +240,33 @@ class IPHASdataClass:
 			
 	def plotCatalog(self, catalogName):
 		catalog = self.catalogs[catalogName]
+		catalogColour = catalogMetadata[catalogName]['colour']
 		try:
 			fig = self.figure
-			xArray = [o['x'] for o in catalog]
-			yArray = [self.height - o['y'] for o in catalog]
+			
+			xArray = []
+			yArray = []
 			rArray = []
 			for o in catalog:
-				r = 4192./(o['mag']**2) + 50.0/o['mag'] + 10
-				print o['mag'], r
+				# Check that the catalog has a class flag
+				if 'class' in o.keys():
+					if o['class'] != -1: continue   # Skip objects that are not stars  
+				xArray.append(o['x'])
+				yArray.append(self.height - o['y'])
+				if catalogName=='dr2':
+					r = o['pixelFWHM']*5.
+				else:
+					if o['mag']>12:
+						r = 40*math.exp((-o['mag']+12)/4)
+					else: 
+						r = 40
 				rArray.append(r)
-			
+	
 			# Nick Wright 
 			# R / pixels = 8192/M^2 + 1000/M + 100 
 			
 			patches = [matplotlib.pyplot.Circle((x_, y_), s_, fill=False, linewidth=1) for x_, y_, s_ in numpy.broadcast(xArray, yArray, rArray)]
-			collection = matplotlib.collections.PatchCollection(patches, alpha = 0.25)
+			collection = matplotlib.collections.PatchCollection(patches, alpha = 0.25, color = catalogColour)
 			ax = matplotlib.pyplot.gca()
 			ax.add_collection(collection)
 			matplotlib.pyplot.draw()
@@ -251,6 +278,38 @@ class IPHASdataClass:
 		except Exception as e:
 			print e
 			
+	def maskCatalog(self, catalogName):
+		try:
+			catalog = self.catalogs[catalogName]
+		except KeyError:
+			print "Could not find a catalog called %s."%catalogName
+			return
+		
+		if self.mask==None:
+			self.mask = numpy.zeros(numpy.shape(self.originalImageData))
+			print "Creating a new blank mask of size:", numpy.shape(self.mask)
+
+		xArray = []
+		yArray = []
+		rArray = []
+		for o in catalog:
+			# Check that the catalog has a class flag
+			if 'class' in o.keys():
+				if o['class'] != -1: continue   # Skip objects that are not stars  
+			xArray.append(o['x'])
+			yArray.append(self.height - o['y'])
+			if catalogName=='dr2':
+				r = o['pixelFWHM']*5.
+			else:
+				if o['mag']>12:
+					r = 40*math.exp((-o['mag']+12)/4)
+				else: 
+					r = 40
+			rArray.append(r)
+			
+		#for x, y, r in zip(xArray, yArray, rArray):
+		#	print x, y, r
+		
 			
 	def drawBitmap(self):
 		if self.boostedImage is None:
@@ -267,6 +326,31 @@ class IPHASdataClass:
 		axes.set_axis_off()
 		self.figure.add_axes(axes)
 		imgplot = matplotlib.pyplot.imshow(mplFrame, cmap="gray_r", interpolation='nearest')
+		
+		verts = []
+		for b in self.boundingBox:
+			print b
+			y, x = self.wcsSolution.all_world2pix(b[0], b[1], 1, ra_dec_order=True)
+			coord  = (float(x), float(y))
+			print coord
+			verts.append(coord)	
+			
+		verts.append((0, 0))
+			
+		print verts
+		codes = [Path.MOVETO,
+		         Path.LINETO,
+		         Path.LINETO,
+		         Path.LINETO,
+		         Path.CLOSEPOLY,
+		         ]
+
+		path = Path(verts, codes)
+
+		patch = matplotlib.patches.PathPatch(path, fill=None, lw=2)
+		axes.add_patch(patch)
+		matplotlib.pyplot.show()
+		
 		# matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		
 			
