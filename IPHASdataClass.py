@@ -154,12 +154,13 @@ class IPHASdataClass:
 			from astropy import coordinates
 			from astropy import units as u
 			c = coordinates.SkyCoord(ra,dec,unit=('deg','deg'),frame='icrs')
-			skyHeight= coordinates.Angle(self.raRange, unit = u.deg)
-			skyWidth = coordinates.Angle(self.decRange, unit = u.deg)
-			print "Sky width, height:", skyWidth, skyHeight
-			result = Vizier.query_region(coordinates = c, width = skyWidth, height = skyHeight, catalog = catalogMetadata[catalogName]['VizierLookup'], verbose=True)
+			skyRA  = coordinates.Angle(self.raRange, unit = u.deg)
+			skyDEC = coordinates.Angle(self.decRange, unit = u.deg)
+			print "Sky RA, DEC range:", skyRA, skyDEC
+			result = Vizier.query_region(coordinates = c, width = skyRA, height = skyDEC, catalog = catalogMetadata[catalogName]['VizierLookup'], verbose=True)
 			newCatalog = result[catalogMetadata[catalogName]['VizierName']]
 			newCatalog.pprint()
+			
 			
 			# Write the new catalog to the cache file
 			newCatalog.write(catalogCache, format='fits', overwrite=True)
@@ -188,15 +189,27 @@ class IPHASdataClass:
 			x, y = self.wcsSolution.all_world2pix([object['ra']], [object['dec']], 1)
 			object['x'] = x[0]
 			object['y'] = y[0]
+			
 			newCatalog.append(object)
 			if  ((index+1)%100) == 0:
 				sys.stdout.write("\rCopying: %d of %d."%(index+1, len(catTable)))
 				sys.stdout.flush()
 		sys.stdout.write("\rCopying: %d of %d.\n"%(index+1, len(catTable)))
 		sys.stdout.flush()
-		
+					
+		trimmedCatalog = []
+		for row in newCatalog:
+			if row['x']<0: continue
+			if row['x']>self.width: continue
+			if row['y']<0: continue
+			if row['y']>self.height: continue
+			trimmedCatalog.append(row)
+		print "Rejected %d points for being outside of the CCD x, y pixel boundaries."%(len(newCatalog)-len(trimmedCatalog))
+		newCatalog = trimmedCatalog
+
 		print "Adding catalog %s to list of stored catalogs."%catalogName
 		self.catalogs[catalogName] =  newCatalog
+		
 		return
 				
 	def getRADECmargins(self):
@@ -239,11 +252,14 @@ class IPHASdataClass:
 			return None 
 			
 	def plotCatalog(self, catalogName):
-		catalog = self.catalogs[catalogName]
+		try:
+			catalog = self.catalogs[catalogName]
+		except KeyError:
+			print "Could not find a catalog called %s."%catalogName
+			return
+		
 		catalogColour = catalogMetadata[catalogName]['colour']
 		try:
-			fig = self.figure
-			
 			xArray = []
 			yArray = []
 			rArray = []
@@ -254,7 +270,7 @@ class IPHASdataClass:
 				xArray.append(o['x'])
 				yArray.append(self.height - o['y'])
 				if catalogName=='dr2':
-					r = o['pixelFWHM']*5.
+					r = o['pixelFWHM']*8.
 				else:
 					if o['mag']>12:
 						r = 40*math.exp((-o['mag']+12)/4)
@@ -264,7 +280,7 @@ class IPHASdataClass:
 	
 			# Nick Wright 
 			# R / pixels = 8192/M^2 + 1000/M + 100 
-			
+			matplotlib.pyplot.figure(self.figure.number)
 			patches = [matplotlib.pyplot.Circle((x_, y_), s_, fill=False, linewidth=1) for x_, y_, s_ in numpy.broadcast(xArray, yArray, rArray)]
 			collection = matplotlib.collections.PatchCollection(patches, alpha = 0.25, color = catalogColour)
 			ax = matplotlib.pyplot.gca()
@@ -278,16 +294,43 @@ class IPHASdataClass:
 		except Exception as e:
 			print e
 			
+			
+	def drawMask(self):
+		if self.mask is None:
+			print "There is no mask defined yet."
+			return
+		self.maskFigure = matplotlib.pyplot.figure(self.filename + " mask", figsize=(self.figSize/1.618, self.figSize))
+		self.maskFigure.frameon = False
+		self.maskFigure.set_tight_layout(True)
+		axes = matplotlib.pyplot.gca()
+		axes.set_axis_off()
+		self.maskFigure.add_axes(axes)
+		imgplot = matplotlib.pyplot.imshow(self.mask, cmap="gray_r", interpolation='nearest')
+		return
+		
+			
 	def maskCatalog(self, catalogName):
+		if self.mask is None:
+			self.mask = numpy.zeros(numpy.shape(self.originalImageData))
+			print "Creating a new blank mask of size:", numpy.shape(self.mask)
+
+		# Mask the border areas
+		if catalogName == 'border':
+			border = 50
+			self.mask[0:border, 0:self.width] = 132
+			self.mask[self.height-border:self.height, 0:self.width] = 132
+			self.mask[0:self.height, 0:border] = 132
+			self.mask[0:self.height, self.width-border:self.width] = 132
+			self.drawMask()
+			return
+			
+		# Retrieve the catalogue
 		try:
 			catalog = self.catalogs[catalogName]
 		except KeyError:
 			print "Could not find a catalog called %s."%catalogName
 			return
 		
-		if self.mask==None:
-			self.mask = numpy.zeros(numpy.shape(self.originalImageData))
-			print "Creating a new blank mask of size:", numpy.shape(self.mask)
 
 		xArray = []
 		yArray = []
@@ -299,7 +342,7 @@ class IPHASdataClass:
 			xArray.append(o['x'])
 			yArray.append(self.height - o['y'])
 			if catalogName=='dr2':
-				r = o['pixelFWHM']*5.
+				r = o['pixelFWHM']*8.
 			else:
 				if o['mag']>12:
 					r = 40*math.exp((-o['mag']+12)/4)
@@ -307,8 +350,17 @@ class IPHASdataClass:
 					r = 40
 			rArray.append(r)
 			
-		#for x, y, r in zip(xArray, yArray, rArray):
-		#	print x, y, r
+		index = 1	
+		for x, y, r in zip(xArray, yArray, rArray):
+			self.mask = generalUtils.gridCircle(y, x, r, self.mask)
+			sys.stdout.write("\rMasking: %d of %d."%(index, len(catalog)))
+			sys.stdout.flush()
+			index+= 1
+		sys.stdout.write("\n")
+		sys.stdout.flush()
+	
+		self.drawMask()
+
 		
 			
 	def drawBitmap(self):
@@ -353,5 +405,27 @@ class IPHASdataClass:
 		
 		# matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		
+	def applyMask(self):
+		if self.mask is None:
+			print "There is no mask defined. Define one with the 'mask' command."
+			return
+		
+		if self.originalImageData is None:
+			print "There is no source bitmap defined. Load one with the 'load' command."
+			return
 			
-			
+		booleanMask = numpy.ma.make_mask(self.mask)
+		maskedImageData = numpy.ma.masked_array(self.originalImageData,  numpy.logical_not(booleanMask))
+		
+		matplotlib.pyplot.figure(self.figure.number)
+		axes = matplotlib.pyplot.gca()
+		imgplot = matplotlib.pyplot.imshow(maskedImageData, cmap="gray_r", interpolation='nearest')
+		matplotlib.pyplot.show()
+		
+		"""	maskedBoostedImage = numpy.ma.masked_array(boostedImage, booleanMask)
+			originalImageData = numpy.copy(imageData)
+			imageData = numpy.ma.filled(maskedImageData, 0)
+			boostedImage = numpy.ma.filled(maskedBoostedImage, 0)
+			redraw()
+		"""	
+		

@@ -27,7 +27,7 @@ class commandClass(cmd.Cmd):
 		import sys
 		print "Sys: %s"%sys.version
 		import astropy
-		print "Astropy: %s"%(astropy.__version__)
+		print "Astropy: %s"%astropy.__version__
 		import numpy
 		print "Numpy: %s"%numpy.__version__
 		import matplotlib
@@ -108,6 +108,14 @@ class commandClass(cmd.Cmd):
 		Draw the image of the CCD """
 		
 		self.IPHASdata.drawBitmap()
+		
+		return
+		
+	def do_apply(self, line):
+		"""
+		Apply mask to the bitmap """
+		
+		self.IPHASdata.applyMask()
 		
 		return
 		

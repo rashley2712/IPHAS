@@ -15,6 +15,30 @@ def percentiles(data, lo, hi):
     data/=scale
     return data
 	
+def gridCircle(x0, y0, radius, grid):
+	""" Draws a circle into a grid (array) with x, y as centre and radius.
+	"""
+	x = radius
+	y = 0
+	decisionOver2 = 1 - x   
+
+	while( y <= x ):
+		grid[ x0: x + x0,  y0: y + y0] = 132 # Octant 1
+		grid[ x0: y + x0,  y0: x + y0] = 132 # Octant 2
+		grid[ -x + x0:x0, y0:y + y0] = 132 # Octant 4
+		grid[ -y + x0: x0, y0:x + y0] = 132 # Octant 3
+		grid[-x + x0:x0, -y + y0:y0] = 132 # Octant 5
+		grid[-y + x0:x0, -x + y0:y0] = 132 # Octant 6
+		grid[ x0:x + x0, -y + y0:y0] = 132 # Octant 7
+		grid[ x0:y + x0, -x + y0:y0] = 132 # Octant 8
+		y+= 1
+		if (decisionOver2<=0):
+			decisionOver2 += 2 * y + 1;  # Change in decision criterion for y -> y+1
+		else:
+			x-= 1;
+			decisionOver2 += 2 * (y - x) + 1;   # Change for y -> y+1, x -> x-1
+	return grid
+
 def changeExtension(filename, extension):
 	return os.path.splitext(filename)[0] + "." + extension 
 	
