@@ -73,6 +73,12 @@ class IPHASdataClass:
 		self.figSize = 12.
 		self.magLimit = 18
 		self.mask = None
+		self.borderSize = 50
+		self.superPixelSize = 50
+		self.spacingLimit = 60./60.  # Minimum spacing of pointings in arcminutes
+		self.rejectTooManyMaskedPixels = 0.70
+		self.varianceThreshold = 5
+		
 		return None
 		
 	def setProperty(self, property, value):
@@ -85,6 +91,8 @@ class IPHASdataClass:
 				self.ignorecache = True
 			if value in falses:
 				self.ignorecache = False
+		if property=='superpixelsize':
+			self.__dict__['superPixelSize'] = int(value)
 			
 			
 		
@@ -316,7 +324,7 @@ class IPHASdataClass:
 
 		# Mask the border areas
 		if catalogName == 'border':
-			border = 50
+			border = self.borderSize
 			self.mask[0:border, 0:self.width] = 132
 			self.mask[self.height-border:self.height, 0:self.width] = 132
 			self.mask[0:self.height, 0:border] = 132
@@ -366,7 +374,7 @@ class IPHASdataClass:
 	def drawBitmap(self):
 		if self.boostedImage is None:
 			print "Boosting the image"
-			self.boostedImage = generalUtils.percentiles(self.originalImageData, 20, 99)
+			self.boostedImage = numpy.copy(generalUtils.percentiles(self.originalImageData, 20, 99))
 		matplotlib.pyplot.ion()
 		# mplFrame = numpy.rot90(self.boostedImage)
 		mplFrame = self.boostedImage
@@ -414,18 +422,103 @@ class IPHASdataClass:
 			print "There is no source bitmap defined. Load one with the 'load' command."
 			return
 			
+			
 		booleanMask = numpy.ma.make_mask(self.mask)
 		maskedImageData = numpy.ma.masked_array(self.originalImageData,  numpy.logical_not(booleanMask))
+		
+		self.maskedImage = maskedImageData
 		
 		matplotlib.pyplot.figure(self.figure.number)
 		axes = matplotlib.pyplot.gca()
 		imgplot = matplotlib.pyplot.imshow(maskedImageData, cmap="gray_r", interpolation='nearest')
 		matplotlib.pyplot.show()
+
+	def makeSuperPixels(self):
+		superPixelList = []
+		superPixelSize = self.superPixelSize
+		borderMask = self.borderSize	
 		
-		"""	maskedBoostedImage = numpy.ma.masked_array(boostedImage, booleanMask)
-			originalImageData = numpy.copy(imageData)
-			imageData = numpy.ma.filled(maskedImageData, 0)
-			boostedImage = numpy.ma.filled(maskedBoostedImage, 0)
-			redraw()
-		"""	
+		# Draw the grid on the matplotlib panel
+		matplotlib.pyplot.figure(self.figure.number)
+		axes = matplotlib.pyplot.gca()
+		for yStep in range(borderMask, self.height-borderMask, superPixelSize):
+			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
+		for xStep in range(borderMask, self.width-borderMask, superPixelSize):
+			matplotlib.pyplot.plot([xStep, xStep], [borderMask, self.height - borderMask], ls=':', color='g')
+		matplotlib.pyplot.show()
+		# End of drawing
+		
+		booleanMask = numpy.ma.make_mask(self.mask)
+		maskedImageCopy = numpy.ma.masked_array(self.originalImageData,  booleanMask)
+		
+		numpy.set_printoptions(threshold = 'nan')
+		
+		rejectMaskCount = 0
+		rejectVarCount = 0
+		index = 0
+		for yStep in range(borderMask, self.height-borderMask, superPixelSize):
+			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
+			for xStep in range(borderMask, self.width-borderMask, superPixelSize):
+				"""index+=1
+				if index>3: return
+				"""
+				x1 = xStep
+				x2 = xStep + superPixelSize - 1
+				y1 = yStep
+				y2 = yStep + superPixelSize - 1
+				# print xStep, yStep, x1, x2, y1, y2
+				superPixel = maskedImageCopy[y1:y2, x1:x2]
+				# print superPixel
+				superPixelObject = {}
+				mean = float(numpy.ma.mean(superPixel))
+				if math.isnan(mean): continue;
+				superPixelObject['mean'] = mean
+				superPixelObject['median'] = numpy.ma.median(superPixel)
+				superPixelObject['min'] = numpy.ma.min(superPixel)
+				superPixelObject['max'] = numpy.ma.max(superPixel)
+				superPixelObject['x1'] = x1
+				superPixelObject['y1'] = y1
+				superPixelObject['xc'] = x1 + superPixelSize/2.
+				superPixelObject['yc'] = y1 + superPixelSize/2.
+				variance = numpy.ma.var(superPixel)
+				numPixels= numpy.ma.count(superPixel)
+				superPixelObject['varppixel'] = variance/numPixels
+				if superPixelObject['varppixel']>self.varianceThreshold: 
+					rejectVarCount+= 1
+					continue
+				
+				numMaskedPixels = numpy.ma.count_masked(superPixel)
+				superPixelObject['maskedpixels'] = numMaskedPixels
+				maskedRatio = float(numMaskedPixels)/float(numPixels)
+				# print superPixelObject
+				
+				if maskedRatio>self.rejectTooManyMaskedPixels: 
+					# print "too many masked pixels here. Rejecting."
+					rejectMaskCount+=1
+					continue;
+				superPixelList.append(superPixelObject)
+				
+		print "%d pixels rejected for having too many masked pixels. Masked pixel ratio > %2.2f%%"%(rejectMaskCount, self.rejectTooManyMaskedPixels)
+		print "%d pixels rejected for having too large variance. Variance per pixel > %2.2f"%(rejectVarCount, self.varianceThreshold)
+		
+		# Sort superpixels
+		superPixelList.sort(key=lambda x: x['mean'], reverse=True)
+		pointings = []
+		distanceLimitPixels = self.spacingLimit*60/self.pixelScale
+		
+		self.superPixelList = superPixelList
+		
+		
+	def listPixels(self, number=0):
+		for index, s in enumerate(self.superPixelList):
+			print s['mean'], s['xc'], s['yc']
+			print s
+			if number!=0 and index==number:
+				return
+		return
+		
+		"""print "Original range:", numpy.min(self.originalImageData), numpy.max(self.originalImageData)
+		print "Masked range:", numpy.min(self.maskedImage), numpy.max(self.maskedImage)
+		"""
+		
 		

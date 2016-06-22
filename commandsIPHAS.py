@@ -91,9 +91,11 @@ class commandClass(cmd.Cmd):
 		""" type
 		Print out to the terminal the contents of an object.
 		The object could be a catalog downloaded from Vizier, etc. """
-		
+		if line == "pixels":
+			self.IPHASdata.listPixels(50)
+			return
 		self.IPHASdata.printCatalog(line)
-			
+		return
 		
 	def do_plot(self, line):
 		""" plot
@@ -117,6 +119,13 @@ class commandClass(cmd.Cmd):
 		
 		self.IPHASdata.applyMask()
 		
+		return
+		
+	def do_make(self, line):
+		"""
+		Make an object, such as a superpixel grid or a mask."""
+		if line == "pixels":
+			self.IPHASdata.makeSuperPixels()
 		return
 		
 		
