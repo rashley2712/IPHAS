@@ -164,11 +164,15 @@ class commandClass(cmd.Cmd):
 		
 	def do_get(self, line):
 		""" Get an additional object for the image. 
-		eg get cat : Get a catalogue of sources from Vizier."""
-		catalogName = line.split()[0]
-		print "Getting ", catalogName
-		self.IPHASdata.getVizierObjects(catalogName)
-		
+		eg get cat [catalog name]: Get a catalogue of sources from Vizier."""
+		type = line.split()[0]
+		if type == "cat":
+			catalogName = line.split()[1]
+			print "Getting ", catalogName
+			self.IPHASdata.getVizierObjects(catalogName)
+		if type == "pixels":
+			number = int(line.split()[1])
+			self.IPHASdata.getRankedPixels(number)
 		return
 		
 	def do_set(self, line):

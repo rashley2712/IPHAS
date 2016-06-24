@@ -13,6 +13,24 @@ import matplotlib.pyplot
 
 def distance(p1, p2):
 	return math.sqrt( (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2 )
+	
+def distanceP(p1, p2):
+	return math.sqrt( (p1.x-p2.x)**2 + (p1.y-p2.y)**2)
+	
+	
+class Pointing:
+	def __init__(self):
+		self.x = 0
+		self.y = 0
+		self.mean = 0
+		self.ra = 0
+		self.dec = 0
+		self.data = None
+		
+	
+	def __str__(self):
+		return "mean: %3.2f  pos: (%d, %d)"%(self.mean, self.x, self.y)
+		
 
 catalogMetadata = {
 	'tycho': {
@@ -503,10 +521,43 @@ class IPHASdataClass:
 		
 		# Sort superpixels
 		superPixelList.sort(key=lambda x: x['mean'], reverse=True)
+		
+		self.superPixelList = superPixelList
+		
+	def getRankedPixels(self, number=50):
+		# Top sources
+		top = True
+		if number<0:
+			top = False
+			number = abs(number)
+			
+		# Sort superpixels
+		if top: self.superPixelList.sort(key=lambda x: x['mean'], reverse=True)
+		else: self.superPixelList.sort(key=lambda x: x['mean'], reverse=False)
+		
 		pointings = []
 		distanceLimitPixels = self.spacingLimit*60/self.pixelScale
 		
-		self.superPixelList = superPixelList
+		for index, s in enumerate(self.superPixelList):
+			print index, s['mean'], s['varppixel'], s['xc'], s['yc']
+			pointingObject = Pointing()
+			pointingObject.x = s['xc']
+			pointingObject.y = s['yc']
+			pointingObject.mean = s['mean']
+			pointingObject.varppixel = s['varppixel']
+			pointingObject.type = "Maximum"
+			# Check if this is not near to an existing pointing
+			reject = False
+			for p in pointings:
+				if distanceP(p, pointingObject) < distanceLimitPixels: 
+					reject=True
+					break
+			if not reject: pointings.append(pointingObject)
+			if len(pointings)>number: break;
+			
+		for p in pointings:
+			print p
+			
 		
 		
 	def listPixels(self, number=0):
