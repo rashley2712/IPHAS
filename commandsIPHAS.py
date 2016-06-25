@@ -91,27 +91,42 @@ class commandClass(cmd.Cmd):
 		""" type
 		Print out to the terminal the contents of an object.
 		The object could be a catalog downloaded from Vizier, etc. """
-		if line == "pixels":
+		params = line.split()
+		if params[0] == "pixels":
 			self.IPHASdata.listPixels(50)
 			return
-		self.IPHASdata.printCatalog(line)
+		if str(params[0]) == "cat":
+			self.IPHASdata.printCatalog(params[1])
+		if str(params[0]) == "object":
+			self.IPHASdata.typeObject(params[1])
+			
 		return
 		
 	def do_plot(self, line):
 		""" plot
 		Plot a catalog over an existing image """
+		params = line.split()
+		if str(params[0]) == "cat":
+			self.IPHASdata.plotCatalog(params[1])
+		if str(params[0]) == "object":
+			self.IPHASdata.plotObject(params[1])
 		
-		self.IPHASdata.plotCatalog(line)
-		
-		return
+		return 
 		
 	def do_draw(self, line):
 		""" draw
 		Draw the image of the CCD """
 		
-		self.IPHASdata.drawBitmap()
+		params = line.split()
+		if params[0]=="object":
+			if len(params)>3: self.IPHASdata.drawPreview(str(params[1]), int(params[2]), str(params[3]))
+			else: self.IPHASdata.drawPreview(str(params[1]), int(params[2]))
+			return
+			
+		if params[0] == 'original':
+			self.IPHASdata.drawBitmap()
 		
-		return
+		return 
 		
 	def do_apply(self, line):
 		"""
@@ -170,9 +185,12 @@ class commandClass(cmd.Cmd):
 			catalogName = line.split()[1]
 			print "Getting ", catalogName
 			self.IPHASdata.getVizierObjects(catalogName)
-		if type == "pixels":
+		if type == "pointings":
 			number = int(line.split()[1])
-			self.IPHASdata.getRankedPixels(number)
+			name = str(line.split()[2])
+			pointings = self.IPHASdata.getRankedPixels(number)
+			self.IPHASdata.objectStore[name] = pointings
+			print "Storing %d pointings in object called %s"%(len(pointings), name)
 		return
 		
 	def do_set(self, line):

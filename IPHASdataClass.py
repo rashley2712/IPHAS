@@ -20,6 +20,8 @@ def distanceP(p1, p2):
 	
 class Pointing:
 	def __init__(self):
+		self.x1 = 0
+		self.y1 = 0
 		self.x = 0
 		self.y = 0
 		self.mean = 0
@@ -31,6 +33,13 @@ class Pointing:
 	def __str__(self):
 		return "mean: %3.2f  pos: (%d, %d)"%(self.mean, self.x, self.y)
 		
+	def computeMax(self):
+		""" Finds the max pixel in the data and saves the position as (xmax, ymax) """
+		print "Number of masked pixels in this data:", numpy.ma.count_masked(self.data)
+		maxPixel = numpy.ma.max(self.data)
+		position = numpy.unravel_index(self.data.argmax(), self.data.shape)
+		print "max: %4.2f pos: (%3.2f, %3.2f)"%(maxPixel, position[0], position[1])
+		self.maxPixel = position
 
 catalogMetadata = {
 	'tycho': {
@@ -89,6 +98,7 @@ class IPHASdataClass:
 		self.ignorecache = False
 		self.catalogs = {}
 		self.figSize = 12.
+		self.previewSize = 6.
 		self.magLimit = 18
 		self.mask = None
 		self.borderSize = 50
@@ -96,6 +106,8 @@ class IPHASdataClass:
 		self.spacingLimit = 60./60.  # Minimum spacing of pointings in arcminutes
 		self.rejectTooManyMaskedPixels = 0.70
 		self.varianceThreshold = 5
+		
+		self.objectStore = {}
 		
 		return None
 		
@@ -112,7 +124,12 @@ class IPHASdataClass:
 		if property=='superpixelsize':
 			self.__dict__['superPixelSize'] = int(value)
 			
-			
+	def getStoredObject(self, name):
+		try:
+			return self.objectStore[name]
+		except KeyError:
+			print "Could not find an object called %s in internal object storage."%name
+		return None	
 		
 	def loadFITSFile(self, filename):
 		hdulist = fits.open(filename)
@@ -201,6 +218,14 @@ class IPHASdataClass:
 		for b in catalog:
 			print b
 		print "%d rows printed."%len(catalog)
+		
+	def typeObject(self, objectName):
+		try:
+			objects = self.objectStore[objectName]
+			for o in objects:
+				print o
+		except KeyError:
+			print "Could not find an object called %s stored internally."%objectName
 	
 	def addCatalog(self, catTable, catalogName):
 		newCatalog = []
@@ -313,6 +338,7 @@ class IPHASdataClass:
 			ax.add_collection(collection)
 			matplotlib.pyplot.draw()
 			matplotlib.pyplot.show()
+			matplotlib.pyplot.pause(0.01)
 			# matplotlib.pyplot.savefig("test.png", bbox_inches='tight')
 		except AttributeError as e:
 			print "There is no drawing surface defined yet. Please use the 'draw' command first."
@@ -332,6 +358,10 @@ class IPHASdataClass:
 		axes.set_axis_off()
 		self.maskFigure.add_axes(axes)
 		imgplot = matplotlib.pyplot.imshow(self.mask, cmap="gray_r", interpolation='nearest')
+		matplotlib.pyplot.draw()
+		matplotlib.pyplot.show()
+		matplotlib.pyplot.pause(0.01)
+		
 		return
 		
 			
@@ -386,7 +416,38 @@ class IPHASdataClass:
 		sys.stdout.flush()
 	
 		self.drawMask()
+		
+	def plotObject(self, objectName):
+		objects = self.getStoredObject(objectName)
+		
 
+	def drawPreview(self, pointingsName, index, title=None):
+		if title is None:
+			title = "Preview of pointing number %d in %s"%(index, pointingsName)
+		print "Creating preview: %s"%title
+		
+		
+		objectList = self.getStoredObject(pointingsName)
+		if objectList is None: return
+		
+		pointingObject = objectList[index]
+		
+		self.previewFigure = matplotlib.pyplot.figure(title, figsize=(self.previewSize, self.previewSize))
+		self.previewFigure.frameon = False
+		self.previewFigure.set_tight_layout(True)
+		axes = matplotlib.pyplot.gca()
+		axes.cla()
+		axes.set_axis_off()
+		self.previewFigure.add_axes(axes)
+		imgplot = matplotlib.pyplot.imshow(pointingObject.data, cmap="gray_r", interpolation='nearest')
+		print "Plotting peak at", pointingObject.maxPixel
+		matplotlib.pyplot.plot(pointingObject.maxPixel[1], pointingObject.maxPixel[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+		matplotlib.pyplot.plot(10, 10, color = 'g', marker='x')
+		matplotlib.pyplot.draw()
+		matplotlib.pyplot.show()
+		matplotlib.pyplot.pause(0.01)
+		
+		return
 		
 			
 	def drawBitmap(self):
@@ -427,7 +488,10 @@ class IPHASdataClass:
 
 		patch = matplotlib.patches.PathPatch(path, fill=None, lw=2)
 		axes.add_patch(patch)
-		matplotlib.pyplot.show()
+		matplotlib.pyplot.draw()
+		matplotlib.pyplot.show(block=False)
+		matplotlib.pyplot.draw()
+		matplotlib.pyplot.pause(0.01)
 		
 		# matplotlib.pyplot.savefig("test.png",bbox_inches='tight')
 		
@@ -449,7 +513,9 @@ class IPHASdataClass:
 		matplotlib.pyplot.figure(self.figure.number)
 		axes = matplotlib.pyplot.gca()
 		imgplot = matplotlib.pyplot.imshow(maskedImageData, cmap="gray_r", interpolation='nearest')
+		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
+		matplotlib.pyplot.pause(0.01)
 
 	def makeSuperPixels(self):
 		superPixelList = []
@@ -463,7 +529,9 @@ class IPHASdataClass:
 			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
 		for xStep in range(borderMask, self.width-borderMask, superPixelSize):
 			matplotlib.pyplot.plot([xStep, xStep], [borderMask, self.height - borderMask], ls=':', color='g')
+		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
+		matplotlib.pyplot.pause(0.01)
 		# End of drawing
 		
 		booleanMask = numpy.ma.make_mask(self.mask)
@@ -496,8 +564,11 @@ class IPHASdataClass:
 				superPixelObject['max'] = numpy.ma.max(superPixel)
 				superPixelObject['x1'] = x1
 				superPixelObject['y1'] = y1
+				superPixelObject['x2'] = x2
+				superPixelObject['y2'] = y2
 				superPixelObject['xc'] = x1 + superPixelSize/2.
 				superPixelObject['yc'] = y1 + superPixelSize/2.
+				superPixelObject['data'] = superPixel
 				variance = numpy.ma.var(superPixel)
 				numPixels= numpy.ma.count(superPixel)
 				superPixelObject['varppixel'] = variance/numPixels
@@ -541,11 +612,15 @@ class IPHASdataClass:
 		for index, s in enumerate(self.superPixelList):
 			print index, s['mean'], s['varppixel'], s['xc'], s['yc']
 			pointingObject = Pointing()
+			pointingObject.x1 = s['x1']
+			pointingObject.y1 = s['y1']
 			pointingObject.x = s['xc']
 			pointingObject.y = s['yc']
 			pointingObject.mean = s['mean']
 			pointingObject.varppixel = s['varppixel']
-			pointingObject.type = "Maximum"
+			pointingObject.data = s['data']
+			if top: pointingObject.type = "Maximum"
+			else: pointingObject.type = "Minimum"
 			# Check if this is not near to an existing pointing
 			reject = False
 			for p in pointings:
@@ -553,10 +628,12 @@ class IPHASdataClass:
 					reject=True
 					break
 			if not reject: pointings.append(pointingObject)
-			if len(pointings)>number: break;
-			
+			if len(pointings)>=number: break;
+		
+		# Compute the position of the max for each pointing and store it internally
 		for p in pointings:
-			print p
+			p.computeMax()	
+		return pointings
 			
 		
 		
