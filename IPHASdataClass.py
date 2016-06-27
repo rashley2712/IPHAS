@@ -28,8 +28,8 @@ class Pointing:
 		self.ra = 0
 		self.dec = 0
 		self.data = None
+		self.maxPosition = (0, 0)
 		
-	
 	def __str__(self):
 		return "mean: %3.2f  pos: (%d, %d)"%(self.mean, self.x, self.y)
 		
@@ -39,7 +39,10 @@ class Pointing:
 		maxPixel = numpy.ma.max(self.data)
 		position = numpy.unravel_index(self.data.argmax(), self.data.shape)
 		print "max: %4.2f pos: (%3.2f, %3.2f)"%(maxPixel, position[0], position[1])
-		self.maxPixel = position
+		self.maxPosition = position
+		
+	def getPixelPosition(self):
+		return ( self.y1 + self.maxPosition[0], self.x1 + self.maxPosition[1])
 
 catalogMetadata = {
 	'tycho': {
@@ -97,7 +100,7 @@ class IPHASdataClass:
 		self.filename = None
 		self.ignorecache = False
 		self.catalogs = {}
-		self.figSize = 12.
+		self.figSize = 8.
 		self.previewSize = 6.
 		self.magLimit = 18
 		self.mask = None
@@ -420,7 +423,21 @@ class IPHASdataClass:
 	def plotObject(self, objectName):
 		objects = self.getStoredObject(objectName)
 		
-
+		# Get the main plotting figure
+		matplotlib.pyplot.figure(self.figure.number)
+		
+		for index, o in enumerate(objects):
+			position = o.getPixelPosition()
+			print position
+			matplotlib.pyplot.plot(position[1], self.height - 1 - position[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+			# if index==2: break
+			
+		matplotlib.pyplot.draw()
+		matplotlib.pyplot.show()
+		matplotlib.pyplot.pause(0.01)
+		return
+		
+		
 	def drawPreview(self, pointingsName, index, title=None):
 		if title is None:
 			title = "Preview of pointing number %d in %s"%(index, pointingsName)
@@ -440,8 +457,8 @@ class IPHASdataClass:
 		axes.set_axis_off()
 		self.previewFigure.add_axes(axes)
 		imgplot = matplotlib.pyplot.imshow(pointingObject.data, cmap="gray_r", interpolation='nearest')
-		print "Plotting peak at", pointingObject.maxPixel
-		matplotlib.pyplot.plot(pointingObject.maxPixel[1], pointingObject.maxPixel[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+		print "Plotting peak at", pointingObject.maxPosition
+		matplotlib.pyplot.plot(pointingObject.maxPosition[1], pointingObject.maxPosition[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
 		matplotlib.pyplot.plot(10, 10, color = 'g', marker='x')
 		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
@@ -524,7 +541,7 @@ class IPHASdataClass:
 		
 		# Draw the grid on the matplotlib panel
 		matplotlib.pyplot.figure(self.figure.number)
-		axes = matplotlib.pyplot.gca()
+		# axes = matplotlib.pyplot.gca()
 		for yStep in range(borderMask, self.height-borderMask, superPixelSize):
 			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
 		for xStep in range(borderMask, self.width-borderMask, superPixelSize):
@@ -534,9 +551,10 @@ class IPHASdataClass:
 		matplotlib.pyplot.pause(0.01)
 		# End of drawing
 		
+		imageCopy = numpy.copy(self.originalImageData)
 		booleanMask = numpy.ma.make_mask(self.mask)
-		maskedImageCopy = numpy.ma.masked_array(self.originalImageData,  booleanMask)
-		
+		maskedImageCopy = numpy.ma.masked_array(imageCopy, numpy.logical_not(booleanMask))
+			
 		numpy.set_printoptions(threshold = 'nan')
 		
 		rejectMaskCount = 0
@@ -546,7 +564,7 @@ class IPHASdataClass:
 			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
 			for xStep in range(borderMask, self.width-borderMask, superPixelSize):
 				"""index+=1
-				if index>3: return
+				if index>30: return
 				"""
 				x1 = xStep
 				x2 = xStep + superPixelSize - 1
@@ -590,10 +608,8 @@ class IPHASdataClass:
 		print "%d pixels rejected for having too many masked pixels. Masked pixel ratio > %2.2f%%"%(rejectMaskCount, self.rejectTooManyMaskedPixels)
 		print "%d pixels rejected for having too large variance. Variance per pixel > %2.2f"%(rejectVarCount, self.varianceThreshold)
 		
-		# Sort superpixels
-		superPixelList.sort(key=lambda x: x['mean'], reverse=True)
-		
 		self.superPixelList = superPixelList
+		return 
 		
 	def getRankedPixels(self, number=50):
 		# Top sources
