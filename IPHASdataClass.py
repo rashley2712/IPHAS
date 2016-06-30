@@ -42,6 +42,7 @@ class Pointing:
 		self.maxPosition = position
 		
 	def getPixelPosition(self):
+		# return (self.y, self.x)
 		return ( self.y1 + self.maxPosition[0], self.x1 + self.maxPosition[1])
 
 catalogMetadata = {
@@ -543,9 +544,9 @@ class IPHASdataClass:
 		matplotlib.pyplot.figure(self.figure.number)
 		# axes = matplotlib.pyplot.gca()
 		for yStep in range(borderMask, self.height-borderMask, superPixelSize):
-			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
+			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g', lw=2)
 		for xStep in range(borderMask, self.width-borderMask, superPixelSize):
-			matplotlib.pyplot.plot([xStep, xStep], [borderMask, self.height - borderMask], ls=':', color='g')
+			matplotlib.pyplot.plot([xStep, xStep], [borderMask, self.height - borderMask], ls=':', color='g', lw=2)
 		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
 		matplotlib.pyplot.pause(0.01)
@@ -554,6 +555,7 @@ class IPHASdataClass:
 		imageCopy = numpy.copy(self.originalImageData)
 		booleanMask = numpy.ma.make_mask(self.mask)
 		maskedImageCopy = numpy.ma.masked_array(imageCopy, numpy.logical_not(booleanMask))
+		maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
 			
 		numpy.set_printoptions(threshold = 'nan')
 		
