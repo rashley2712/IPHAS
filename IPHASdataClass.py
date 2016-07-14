@@ -127,6 +127,8 @@ class IPHASdataClass:
 				self.ignorecache = False
 		if property=='superpixelsize':
 			self.__dict__['superPixelSize'] = int(value)
+		if property=='spacinglimit':
+			self.__dict__['spacingLimit'] = float(value)
 			
 	def getStoredObject(self, name):
 		try:
