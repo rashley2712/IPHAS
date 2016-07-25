@@ -65,10 +65,10 @@ catalogMetadata = {
 					'B': 'Bmag',
 					'R': 'Rmag',
 					'mag': 'Rmag' },
-				'colour': 'blue',
-				'VizierName': 'I/252/out',
-				'VizierLookup': 'usno'
-			},
+		'colour': 'blue',
+		'VizierName': 'I/252/out',
+		'VizierLookup': 'usno'
+		},
 	'dr2': {
 		'columns': {
 			'ra': 'RAJ2000', 
@@ -83,7 +83,7 @@ catalogMetadata = {
 		    'haClass': 'haClass',
 		    'pixelFWHM': 'haSeeing'},
 		'catalog_db': "http://vizier.u-strasbg.fr/viz-bin/votable/-A?-source=IPHAS2&-out.all&",
-		'VizierLookup': 'DR2',
+		'VizierLookup': 'dr2',
 		'VizierName': 'II/321/iphas2',
 		'colour': 'green'
 	}
@@ -206,7 +206,9 @@ class IPHASdataClass:
 			skyRA  = coordinates.Angle(self.raRange, unit = u.deg)
 			skyDEC = coordinates.Angle(self.decRange, unit = u.deg)
 			print "Sky RA, DEC range:", skyRA, skyDEC
-			result = Vizier.query_region(coordinates = c, width = skyRA, height = skyDEC, catalog = catalogMetadata[catalogName]['VizierLookup'], verbose=True)
+			print "going to Astroquery for:", catalogMetadata[catalogName]['VizierLookup']
+			result = Vizier.query_region(coordinates = c, width = skyRA, height = skyDEC, catalog = catalogMetadata[catalogName]['VizierName'], verbose=True)
+			print result
 			newCatalog = result[catalogMetadata[catalogName]['VizierName']]
 			newCatalog.pprint()
 			
