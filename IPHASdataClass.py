@@ -151,7 +151,9 @@ class IPHASdataClass:
 				self.FITSHeaders[key] = card.header[key]
 				if 'WFFBAND' in key:
 					self.filter = card.header[key]
-		self.originalImageData =  hdulist[1].data
+		import astropy.io.fits as pf
+		self.originalImageData = pf.getdata(filename, uint=True, do_not_scale_image_data=True)
+		# self.originalImageData =  hdulist[1].getdata(uint=True)
 		self.height, self.width = numpy.shape(self.originalImageData)
 		self.wcsSolution = WCS(hdulist[1].header)
 		print "width, height", self.width, self.height, "shape:", numpy.shape(self.originalImageData)
