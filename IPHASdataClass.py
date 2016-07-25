@@ -129,6 +129,9 @@ class IPHASdataClass:
 			self.__dict__['superPixelSize'] = int(value)
 		if property=='spacinglimit':
 			self.__dict__['spacingLimit'] = float(value)
+		if property=='plotwindowsize':
+			self.__dict__['figSize'] = float(value)
+
 			
 	def getStoredObject(self, name):
 		try:
