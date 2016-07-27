@@ -138,6 +138,7 @@ class IPHASdataClass:
 			return self.objectStore[name]
 		except KeyError:
 			print "Could not find an object called %s in internal object storage."%name
+			print "This is a test"
 		return None	
 		
 	def loadFITSFile(self, filename):
