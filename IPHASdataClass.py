@@ -286,7 +286,6 @@ class IPHASdataClass:
 		skyDiagonal = distance(pixel1, pixel2)
 		print "Diagonal size:", pixelDiagonal, skyDiagonal
 		self.pixelScale = (skyDiagonal / pixelDiagonal) * 3600.
-		print "Pixel scale: %3.2f \"/pixel"%self.pixelScale
 		raMin = numpy.min([r[0] for r in boundingBox])
 		raMax = numpy.max([r[0] for r in boundingBox])
 		decMin = numpy.min([r[1] for r in boundingBox])
