@@ -24,6 +24,8 @@ class Pointing:
 		self.y1 = 0
 		self.x = 0
 		self.y = 0
+		self.xc = 0
+		self.yc = 0
 		self.mean = 0
 		self.ra = 0
 		self.dec = 0
@@ -31,19 +33,21 @@ class Pointing:
 		self.maxPosition = (0, 0)
 		
 	def __str__(self):
-		return "mean: %3.2f  pos: (%d, %d)"%(self.mean, self.x, self.y)
+		return "mean: %3.2f  pos: (%d, %d) masked: %d"%(self.mean, self.x, self.y, numpy.ma.count_masked(self.data))
 		
 	def computeMax(self):
 		""" Finds the max pixel in the data and saves the position as (xmax, ymax) """
 		print "Number of masked pixels in this data:", numpy.ma.count_masked(self.data)
 		maxPixel = numpy.ma.max(self.data)
-		position = numpy.unravel_index(self.data.argmax(), self.data.shape)
+		position = numpy.unravel_index(numpy.ma.argmax(self.data), self.data.shape)
 		print "max: %4.2f pos: (%3.2f, %3.2f)"%(maxPixel, position[0], position[1])
 		self.maxPosition = position
 		
 	def getPixelPosition(self):
 		# return (self.y, self.x)
 		return ( self.y1 + self.maxPosition[0], self.x1 + self.maxPosition[1])
+
+fullDebug = False
 
 catalogMetadata = {
 	'tycho': {
@@ -102,7 +106,7 @@ class IPHASdataClass:
 		self.ignorecache = False
 		self.catalogs = {}
 		self.figSize = 8.
-		self.previewSize = 6.
+		self.previewSize = 4.
 		self.magLimit = 18
 		self.mask = None
 		self.borderSize = 50
@@ -153,8 +157,8 @@ class IPHASdataClass:
 				if 'WFFBAND' in key:
 					self.filter = card.header[key]
 		import astropy.io.fits as pf
-		self.originalImageData = pf.getdata(filename, uint=True, do_not_scale_image_data=True)
-		# self.originalImageData =  hdulist[1].getdata(uint=True)
+		self.originalImageData = pf.getdata(filename, uint=False, do_not_scale_image_data=False)
+		# self.originalImageData =  hdulist[1].data
 		self.height, self.width = numpy.shape(self.originalImageData)
 		self.wcsSolution = WCS(hdulist[1].header)
 		print "width, height", self.width, self.height, "shape:", numpy.shape(self.originalImageData)
@@ -236,8 +240,8 @@ class IPHASdataClass:
 	def typeObject(self, objectName):
 		try:
 			objects = self.objectStore[objectName]
-			for o in objects:
-				print o
+			for index, o in enumerate(objects):
+				print index, ":", o
 		except KeyError:
 			print "Could not find an object called %s stored internally."%objectName
 	
@@ -440,6 +444,9 @@ class IPHASdataClass:
 			position = o.getPixelPosition()
 			print position
 			matplotlib.pyplot.plot(position[1], self.height - 1 - position[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+			matplotlib.pyplot.annotate(str(index), (position[1], self.height - 1 - position[0]), color='w')
+			matplotlib.pyplot.annotate(str(index), (o.x, self.height - 1 - o.y), color='w')
+			matplotlib.pyplot.plot(o.x, self.height - 1 - o.y, color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
 			# if index==2: break
 			
 		matplotlib.pyplot.draw()
@@ -466,9 +473,10 @@ class IPHASdataClass:
 		axes.cla()
 		axes.set_axis_off()
 		self.previewFigure.add_axes(axes)
-		imgplot = matplotlib.pyplot.imshow(pointingObject.data, cmap="gray_r", interpolation='nearest')
+		imgplot = matplotlib.pyplot.imshow(numpy.flipud(pointingObject.data), cmap="hsv", interpolation='nearest')
 		print "Plotting peak at", pointingObject.maxPosition
-		matplotlib.pyplot.plot(pointingObject.maxPosition[1], pointingObject.maxPosition[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+		print "Absolute (x,y) for this peak is at:", pointingObject.maxPosition[1] + pointingObject.x1, self.superPixelSize - (pointingObject.maxPosition[0] + pointingObject.y1)
+		matplotlib.pyplot.plot(pointingObject.maxPosition[1], self.superPixelSize - 2 - pointingObject.maxPosition[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
 		matplotlib.pyplot.plot(10, 10, color = 'g', marker='x')
 		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
@@ -548,6 +556,8 @@ class IPHASdataClass:
 		superPixelList = []
 		superPixelSize = self.superPixelSize
 		borderMask = self.borderSize	
+		width = self.width
+		height = self.height
 		
 		# Draw the grid on the matplotlib panel
 		matplotlib.pyplot.figure(self.figure.number)
@@ -555,7 +565,7 @@ class IPHASdataClass:
 		for yStep in range(borderMask, self.height-borderMask, superPixelSize):
 			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g', lw=2)
 		for xStep in range(borderMask, self.width-borderMask, superPixelSize):
-			matplotlib.pyplot.plot([xStep, xStep], [borderMask, self.height - borderMask], ls=':', color='g', lw=2)
+			matplotlib.pyplot.plot([xStep, xStep], [borderMask, self.height - borderMask], ls=':', color='r', lw=2)
 		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
 		matplotlib.pyplot.pause(0.01)
@@ -568,11 +578,16 @@ class IPHASdataClass:
 			
 		numpy.set_printoptions(threshold = 'nan')
 		
+		pixelBitmapWidth = int((width - 2.*borderMask) / superPixelSize) + 1
+		pixelBitmapHeight = int((height - 2.*borderMask) / superPixelSize) + 1
+		pixelBitmap = numpy.zeros((pixelBitmapHeight, pixelBitmapWidth))
+		pixelBitmap.fill(99E9) 
+		
 		rejectMaskCount = 0
 		rejectVarCount = 0
 		index = 0
 		for yStep in range(borderMask, self.height-borderMask, superPixelSize):
-			matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
+			# matplotlib.pyplot.plot([borderMask, self.width - borderMask], [yStep, yStep], ls=':', color='g')
 			for xStep in range(borderMask, self.width-borderMask, superPixelSize):
 				"""index+=1
 				if index>30: return
@@ -583,7 +598,6 @@ class IPHASdataClass:
 				y2 = yStep + superPixelSize - 1
 				# print xStep, yStep, x1, x2, y1, y2
 				superPixel = maskedImageCopy[y1:y2, x1:x2]
-				# print superPixel
 				superPixelObject = {}
 				mean = float(numpy.ma.mean(superPixel))
 				if math.isnan(mean): continue;
@@ -598,6 +612,33 @@ class IPHASdataClass:
 				superPixelObject['xc'] = x1 + superPixelSize/2.
 				superPixelObject['yc'] = y1 + superPixelSize/2.
 				superPixelObject['data'] = superPixel
+				
+				
+				bitmapX = (x1-borderMask)/superPixelSize
+				bitmapY = (y1-borderMask)/superPixelSize
+				
+				if fullDebug:
+					matplotlib.pyplot.figure(self.figure.number)
+					matplotlib.pyplot.plot(superPixelObject['xc'], superPixelObject['yc'], color = 'r', marker='x', markersize=25, lw=4, fillstyle='none')
+					matplotlib.pyplot.draw()
+					matplotlib.pyplot.show()
+					matplotlib.pyplot.pause(0.001)
+				
+					self.previewFigure = matplotlib.pyplot.figure("Superpixel", figsize=(self.previewSize, self.previewSize))
+					self.previewFigure.frameon = False
+					self.previewFigure.set_tight_layout(True)
+					axes = matplotlib.pyplot.gca()
+					axes.cla()
+					axes.set_axis_off()
+					self.previewFigure.add_axes(axes)
+					imgplot = matplotlib.pyplot.imshow(superPixelObject['data'], cmap="gray_r", interpolation='nearest')
+					matplotlib.pyplot.draw()
+					matplotlib.pyplot.show()
+					matplotlib.pyplot.pause(0.001)
+					print x1, x2, y1, y2, bitmapX, bitmapY
+					raw_input("Press Enter to continue...")
+					
+
 				variance = numpy.ma.var(superPixel)
 				numPixels= numpy.ma.count(superPixel)
 				superPixelObject['varppixel'] = variance/numPixels
@@ -608,16 +649,34 @@ class IPHASdataClass:
 				numMaskedPixels = numpy.ma.count_masked(superPixel)
 				superPixelObject['maskedpixels'] = numMaskedPixels
 				maskedRatio = float(numMaskedPixels)/float(numPixels)
-				# print superPixelObject
-				
 				if maskedRatio>self.rejectTooManyMaskedPixels: 
 					# print "too many masked pixels here. Rejecting."
 					rejectMaskCount+=1
 					continue;
 				superPixelList.append(superPixelObject)
+				pixelBitmap[bitmapY, bitmapX] = mean
 				
 		print "%d pixels rejected for having too many masked pixels. Masked pixel ratio > %2.2f%%"%(rejectMaskCount, self.rejectTooManyMaskedPixels)
 		print "%d pixels rejected for having too large variance. Variance per pixel > %2.2f"%(rejectVarCount, self.varianceThreshold)
+		
+		self.sampledImageFigure = matplotlib.pyplot.figure("Sampled Image", figsize=(self.figSize/1.618, self.figSize))
+		self.sampledImageFigure.frameon = False
+		self.sampledImageFigure.set_tight_layout(True)
+		axes = matplotlib.pyplot.gca()
+		axes.cla()
+		axes.set_axis_off()
+		self.sampledImageFigure.add_axes(axes)
+		
+		maskedPixelImage = numpy.ma.masked_equal(pixelBitmap, 99E9)
+		
+		
+		# minimumPixel = numpy.min(pixelBitmap)
+		# pixelBitmap[pixelBitmap==99E9] = minimumPixel
+		
+		imgplot = matplotlib.pyplot.imshow(numpy.flipud(maskedPixelImage), cmap="hsv", interpolation='nearest')
+		matplotlib.pyplot.draw()
+		matplotlib.pyplot.show()
+				
 		
 		self.superPixelList = superPixelList
 		return 
@@ -641,11 +700,15 @@ class IPHASdataClass:
 			pointingObject = Pointing()
 			pointingObject.x1 = s['x1']
 			pointingObject.y1 = s['y1']
+			pointingObject.x2 = s['x2']
+			pointingObject.y2 = s['y2']
+			
 			pointingObject.x = s['xc']
 			pointingObject.y = s['yc']
 			pointingObject.mean = s['mean']
 			pointingObject.varppixel = s['varppixel']
 			pointingObject.data = s['data']
+			# print pointingObject.data
 			if top: pointingObject.type = "Maximum"
 			else: pointingObject.type = "Minimum"
 			# Check if this is not near to an existing pointing
