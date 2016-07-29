@@ -22,10 +22,8 @@ class Pointing:
 	def __init__(self):
 		self.x1 = 0
 		self.y1 = 0
-		self.x = 0
-		self.y = 0
-		self.xc = 0
-		self.yc = 0
+		self.x = 0    # Position of the centre of the superpixel
+		self.y = 0    # ....
 		self.mean = 0
 		self.ra = 0
 		self.dec = 0
@@ -708,7 +706,6 @@ class IPHASdataClass:
 			pointingObject.mean = s['mean']
 			pointingObject.varppixel = s['varppixel']
 			pointingObject.data = s['data']
-			# print pointingObject.data
 			if top: pointingObject.type = "Maximum"
 			else: pointingObject.type = "Minimum"
 			# Check if this is not near to an existing pointing
