@@ -85,8 +85,8 @@ def toSexagesimal(world):
 	decMinutes = (dec - int(dec)) * 60
 	decSeconds = (decMinutes - int(decMinutes)) * 60
 		
-	outString = "RA: %02d:%02d:%04.1f"%(hours, minutes, seconds)
-	outString+= " DEC: %s%02d:%02d:%06.3f"%(decSign, dec, decMinutes, decSeconds)
+	outString = "RA/DEC: %02d:%02d:%04.1f"%(hours, minutes, seconds)
+	outString+= " %s%02d:%02d:%06.3f"%(decSign, dec, decMinutes, decSeconds)
 	return outString
 	
 def writeFriendlyTimeSeconds(seconds):
