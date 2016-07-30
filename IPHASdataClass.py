@@ -441,10 +441,10 @@ class IPHASdataClass:
 		for index, o in enumerate(objects):
 			position = o.getPixelPosition()
 			print position
-			matplotlib.pyplot.plot(position[1], self.height - 1 - position[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
-			matplotlib.pyplot.annotate(str(index), (position[1], self.height - 1 - position[0]), color='w')
-			matplotlib.pyplot.annotate(str(index), (o.x, self.height - 1 - o.y), color='w')
-			matplotlib.pyplot.plot(o.x, self.height - 1 - o.y, color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+			matplotlib.pyplot.plot(o.x, o.y, color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+			matplotlib.pyplot.annotate(str(index), (o.x, o.y), color='b')
+			#matplotlib.pyplot.annotate(str(index), (o.x, self.height - 1 - o.y), color='w')
+			#matplotlib.pyplot.plot(o.x, self.height - 1 - o.y, color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
 			# if index==2: break
 			
 		matplotlib.pyplot.draw()
@@ -464,6 +464,7 @@ class IPHASdataClass:
 		
 		pointingObject = objectList[index]
 		
+		print "mean: %f"%pointingObject.mean
 		self.previewFigure = matplotlib.pyplot.figure(title, figsize=(self.previewSize, self.previewSize))
 		self.previewFigure.frameon = False
 		self.previewFigure.set_tight_layout(True)
@@ -471,10 +472,8 @@ class IPHASdataClass:
 		axes.cla()
 		axes.set_axis_off()
 		self.previewFigure.add_axes(axes)
-		imgplot = matplotlib.pyplot.imshow(numpy.flipud(pointingObject.data), cmap="hsv", interpolation='nearest')
-		print "Plotting peak at", pointingObject.maxPosition
-		print "Absolute (x,y) for this peak is at:", pointingObject.maxPosition[1] + pointingObject.x1, self.superPixelSize - (pointingObject.maxPosition[0] + pointingObject.y1)
-		matplotlib.pyplot.plot(pointingObject.maxPosition[1], self.superPixelSize - 2 - pointingObject.maxPosition[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
+		imgplot = matplotlib.pyplot.imshow(pointingObject.data, cmap="hsv", interpolation='nearest')
+		matplotlib.pyplot.plot(pointingObject.maxPosition[1], pointingObject.maxPosition[0], color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
 		matplotlib.pyplot.plot(10, 10, color = 'g', marker='x')
 		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
@@ -486,7 +485,8 @@ class IPHASdataClass:
 	def drawBitmap(self):
 		if self.boostedImage is None:
 			print "Boosting the image"
-			self.boostedImage = numpy.copy(generalUtils.percentiles(self.originalImageData, 20, 99))
+			# self.boostedImage = numpy.copy(generalUtils.percentiles(numpy.copy(self.originalImageData), 20, 99))
+			self.boostedImage = numpy.copy(self.originalImageData)
 		matplotlib.pyplot.ion()
 		# mplFrame = numpy.rot90(self.boostedImage)
 		mplFrame = self.boostedImage
@@ -545,7 +545,7 @@ class IPHASdataClass:
 		
 		matplotlib.pyplot.figure(self.figure.number)
 		axes = matplotlib.pyplot.gca()
-		imgplot = matplotlib.pyplot.imshow(maskedImageData, cmap="gray_r", interpolation='nearest')
+		imgplot = matplotlib.pyplot.imshow(self.maskedImage, cmap="gray_r", interpolation='nearest')
 		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
 		matplotlib.pyplot.pause(0.01)
@@ -571,11 +571,8 @@ class IPHASdataClass:
 		
 		imageCopy = numpy.copy(self.originalImageData)
 		booleanMask = numpy.ma.make_mask(self.mask)
-		maskedImageCopy = numpy.ma.masked_array(imageCopy, numpy.logical_not(booleanMask))
 		maskedImageCopy = numpy.ma.masked_array(imageCopy, booleanMask)
 			
-		numpy.set_printoptions(threshold = 'nan')
-		
 		pixelBitmapWidth = int((width - 2.*borderMask) / superPixelSize) + 1
 		pixelBitmapHeight = int((height - 2.*borderMask) / superPixelSize) + 1
 		pixelBitmap = numpy.zeros((pixelBitmapHeight, pixelBitmapWidth))
@@ -689,6 +686,8 @@ class IPHASdataClass:
 		# Sort superpixels
 		if top: self.superPixelList.sort(key=lambda x: x['mean'], reverse=True)
 		else: self.superPixelList.sort(key=lambda x: x['mean'], reverse=False)
+		
+		
 		
 		pointings = []
 		distanceLimitPixels = self.spacingLimit*60/self.pixelScale
