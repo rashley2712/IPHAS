@@ -30,6 +30,7 @@ class Pointing:
 		self.data = None
 		self.maxPosition = (0, 0)
 		self.length = 0
+		self.type = "Maximum"
 		
 	def __str__(self):
 		return "mean: %3.2f  pos: (%d, %d) masked: %d"%(self.mean, self.x, self.y, numpy.ma.count_masked(self.data))
@@ -44,9 +45,14 @@ class Pointing:
 	def computeMax(self):
 		""" Finds the max pixel in the data and saves the position as (xmax, ymax) """
 		print "Number of masked pixels in this data:", numpy.ma.count_masked(self.data)
-		maxPixel = numpy.ma.max(self.data)
-		position = numpy.unravel_index(numpy.ma.argmax(self.data), self.data.shape)
+		if self.type=="Maximum":
+			maxPixel = numpy.ma.max(self.data)
+			position = numpy.unravel_index(numpy.ma.argmax(self.data), self.data.shape)
+		else:
+			maxPixel = numpy.ma.min(self.data)
+			position = numpy.unravel_index(numpy.ma.argmin(self.data), self.data.shape)
 		print "max: %4.2f pos: (%3.2f, %3.2f)"%(maxPixel, position[0], position[1])
+		
 		self.maxPosition = position
 		
 	def getPixelPosition(self):
@@ -146,7 +152,7 @@ class IPHASdataClass:
 				self.fullDebug = True
 			if value in falses:
 				self.fullDebug = False
-		if property=='colour':
+		if property=='colour' or property=='color':
 			self.__dict__['activeColour'] = str(value)
 
 			
