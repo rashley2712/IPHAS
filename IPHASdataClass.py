@@ -122,7 +122,7 @@ class IPHASdataClass:
 		self.varianceThreshold = 5
 		self.fullDebug = False
 		self.objectStore = {}
-		
+		self.activeColour = 'r'
 		return None
 		
 	def setProperty(self, property, value):
@@ -146,6 +146,8 @@ class IPHASdataClass:
 				self.fullDebug = True
 			if value in falses:
 				self.fullDebug = False
+		if property=='colour':
+			self.__dict__['activeColour'] = str(value)
 
 			
 	def getStoredObject(self, name):
@@ -448,18 +450,20 @@ class IPHASdataClass:
 	def plotObject(self, objectName):
 		objects = self.getStoredObject(objectName)
 		
+		colour = self.activeColour
+		
 		# Get the main plotting figure
 		matplotlib.pyplot.figure(self.figure.number)
 		
 		for index, o in enumerate(objects):
 			position = o.getPixelPosition()
 			print position
-			matplotlib.pyplot.plot(o.x, o.y, color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
-			matplotlib.pyplot.annotate(str(index), (o.x, o.y), color='b')
+			# matplotlib.pyplot.plot(o.x, o.y, color = 'r', marker='o', markersize=25, lw=4, fillstyle='none')
 			xoffset = o.maxPosition[1]
 			yoffset = self.superPixelSize - 2 - o.maxPosition[0]
 			print "offsets", xoffset, yoffset
-			matplotlib.pyplot.plot(o.x1 + xoffset, o.y1 + yoffset , color = 'r', marker='x', markersize=25, lw=4, fillstyle='none')
+			matplotlib.pyplot.plot(o.x1 + xoffset, o.y1 + yoffset , color = colour, marker='o', markersize=15, mew=3, fillstyle='none')
+			matplotlib.pyplot.annotate(str(index), (o.x1+xoffset+20, o.y1+yoffset), color=colour, fontweight='bold', fontsize=15)
 			# if index==2: break
 			
 		matplotlib.pyplot.draw()
@@ -738,7 +742,13 @@ class IPHASdataClass:
 			p.computeMax()	
 			p.computeAbsoluteLocation(self.wcsSolution)
 		return pointings
-			
+		
+	def clearFigure(self):
+		""" Clears the main drawing window """
+		print "Clearing the current figure."
+		matplotlib.pyplot.figure(self.figure.number)
+		matplotlib.pyplot.clf()
+		return
 		
 		
 	def listPixels(self, number=0):

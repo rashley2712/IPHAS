@@ -206,6 +206,13 @@ class commandClass(cmd.Cmd):
 		self.IPHASdata.setProperty(propertyToSet, value)
 		return
 		
+	def do_clear(self,line):
+		""" Clear the main image drawing panel
+		"""
+		self.IPHASdata.clearFigure()
+		return
+		
+		
 	def do_mask(self, line):
 		self.IPHASdata.maskCatalog(line)
 		return
