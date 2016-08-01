@@ -206,6 +206,26 @@ class commandClass(cmd.Cmd):
 		self.IPHASdata.setProperty(propertyToSet, value)
 		return
 		
+	def do_dump(self, line):
+		""" dump an object to disk
+		dump [objectname] [filename] [format]
+		[format] default is 'json'
+		"""
+		params = line.split()
+		if len(params)<2:
+			print "Usage 'dump [objectname] [filename] [optional-format]'"
+			return
+		objectName = str(params[0])
+		filename = str(params[1])
+		if len(params)>2:
+			format = str(params[2])
+		else:
+			format = "json"
+		self.IPHASdata.dump(objectName, filename, format)
+		
+		return
+		
+		
 	def do_clear(self,line):
 		""" Clear the main image drawing panel
 		"""

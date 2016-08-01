@@ -58,6 +58,11 @@ class Pointing:
 	def getPixelPosition(self):
 		# return (self.y, self.x)
 		return ( self.y1 + self.maxPosition[0], self.x1 + self.maxPosition[1])
+		
+	def toJSON(self):
+		retStr = ""
+		
+		return retStr
 
 
 
@@ -161,7 +166,6 @@ class IPHASdataClass:
 			return self.objectStore[name]
 		except KeyError:
 			print "Could not find an object called %s in internal object storage."%name
-			print "This is a test"
 		return None	
 		
 	def loadFITSFile(self, filename):
@@ -393,7 +397,7 @@ class IPHASdataClass:
 		axes = matplotlib.pyplot.gca()
 		axes.set_axis_off()
 		self.maskFigure.add_axes(axes)
-		imgplot = matplotlib.pyplot.imshow(self.mask, cmap="gray_r", interpolation='nearest')
+		imgplot = matplotlib.pyplot.imshow(numpy.flipud(self.mask), cmap="gray_r", interpolation='nearest')
 		matplotlib.pyplot.draw()
 		matplotlib.pyplot.show()
 		matplotlib.pyplot.pause(0.01)
@@ -754,6 +758,12 @@ class IPHASdataClass:
 		print "Clearing the current figure."
 		matplotlib.pyplot.figure(self.figure.number)
 		matplotlib.pyplot.clf()
+		return
+	
+	def dump(self, objectName, filename, format):
+		print "About to dump %s"%objectName
+		objects = self.getStoredObject(objectName)
+	
 		return
 		
 		
