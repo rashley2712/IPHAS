@@ -6,7 +6,7 @@ from astropy.table import Table, vstack
 from astropy.utils import data
 from matplotlib.path import Path
 
-import numpy, math, os, sys
+import numpy, math, os, sys, json
 import generalUtils
 import astroquery
 import matplotlib.pyplot
@@ -29,6 +29,7 @@ class Pointing:
 		self.dec = 0
 		self.data = None
 		self.maxPosition = (0, 0)
+		self.peak = 0
 		self.length = 0
 		self.type = "Maximum"
 		
@@ -52,7 +53,7 @@ class Pointing:
 			maxPixel = numpy.ma.min(self.data)
 			position = numpy.unravel_index(numpy.ma.argmin(self.data), self.data.shape)
 		print "max: %4.2f pos: (%3.2f, %3.2f)"%(maxPixel, position[0], position[1])
-		
+		self.peak = maxPixel
 		self.maxPosition = position
 		
 	def getPixelPosition(self):
@@ -60,12 +61,17 @@ class Pointing:
 		return ( self.y1 + self.maxPosition[0], self.x1 + self.maxPosition[1])
 		
 	def toJSON(self):
-		retStr = ""
+		jsonObject = {}
+		jsonObject['xc'] = float(self.x)
+		jsonObject['yc'] = float(self.y)
+		jsonObject['xmax'] = float(self.x + self.maxPosition[1])
+		jsonObject['ymax'] = float(self.y + self.maxPosition[0])
+		jsonObject['ra'] = float(self.ra) 
+		jsonObject['dec'] = float(self.dec) 
+		jsonObject['mean'] = float(self.mean)
+		jsonObject['peak'] = float(self.peak)
+		return json.dumps(jsonObject)
 		
-		return retStr
-
-
-
 catalogMetadata = {
 	'tycho': {
 		'columns': {
@@ -120,6 +126,7 @@ class IPHASdataClass:
 		self.pixelScale = None
 		self.centre = None
 		self.filename = None
+		self.rootname = "unknown"
 		self.ignorecache = False
 		self.catalogs = {}
 		self.figSize = 8.
@@ -171,6 +178,7 @@ class IPHASdataClass:
 	def loadFITSFile(self, filename):
 		hdulist = fits.open(filename)
 		self.filename = filename
+		self.rootname = filename.split(".")[0]
 		FITSHeaders = []
 		for card in hdulist:
 			# print(card.header.keys())
@@ -759,12 +767,49 @@ class IPHASdataClass:
 		matplotlib.pyplot.figure(self.figure.number)
 		matplotlib.pyplot.clf()
 		return
+		
+	def dumpImage(self, filename):
+		matplotlib.pyplot.figure(self.figure.number)
+		filename = filename.format(root = self.rootname)
+		extension = os.path.splitext(filename)[1]
+		if not extension==".png":
+			filename+= ".png" 
+		matplotlib.pyplot.savefig(filename,bbox_inches='tight')
+		return
+		
 	
-	def dump(self, objectName, filename, format):
+	def dumpObject(self, objectName, filename, outputFormat):
 		print "About to dump %s"%objectName
 		objects = self.getStoredObject(objectName)
-	
-		return
+			
+		filename = filename.format(root = self.rootname)
+			
+		if outputFormat=="json":
+			objectList = [o.toJSON() for o in objects]
+			outputFile = open(filename, "wt")
+			outputFile.write(json.dumps(objectList))
+			outputFile.close()
+			return
+		
+		if outputFormat=="fits" or outputFormat=="votable":
+			objectTable = Table()
+			ids = []
+			for index, o in enumerate(objects):
+				id = self.rootname + "-%02d"%index
+				if o.type=="Minimum": id = "sky-" + self.rootname + "-%02d"%index
+				ids.append(id)
+			objectTable['id'] = ids
+			objectTable['ra'] = [o.ra for o in objects]
+			objectTable['dec'] = [o.dec for o in objects]
+			objectTable['xmax'] = [o.AbsoluteLocationPixels[0] for o in objects]
+			objectTable['ymax'] = [o.AbsoluteLocationPixels[1] for o in objects]
+			objectTable['mean'] = [o.mean for o in objects]
+			objectTable['peak'] = [o.peak for o in objects]
+			objectTable['variance'] = [o.varppixel for o in objects]
+			objectTable['type'] = [o.type for o in objects]
+			
+			objectTable.write(filename, format='fits', overwrite=True)
+			return
 		
 		
 	def listPixels(self, number=0):

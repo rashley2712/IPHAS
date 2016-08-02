@@ -209,6 +209,8 @@ class commandClass(cmd.Cmd):
 	def do_dump(self, line):
 		""" dump an object to disk
 		dump [objectname] [filename] [format]
+		or
+		dump image [filename]
 		[format] default is 'json'
 		"""
 		params = line.split()
@@ -217,11 +219,14 @@ class commandClass(cmd.Cmd):
 			return
 		objectName = str(params[0])
 		filename = str(params[1])
+		if objectName=='image':
+			self.IPHASdata.dumpImage(filename)
+			return
 		if len(params)>2:
 			format = str(params[2])
 		else:
 			format = "json"
-		self.IPHASdata.dump(objectName, filename, format)
+		self.IPHASdata.dumpObject(objectName, filename, format)
 		
 		return
 		
